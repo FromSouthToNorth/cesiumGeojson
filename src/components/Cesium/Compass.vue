@@ -43,7 +43,19 @@ function updateHeading() {
 function handleDoubleClick() {
   const v = toRaw(cesiumStore.viewer)
   if (!cesiumStore.hasViewer) return
-  v.camera.twistLeft(-v.camera.heading)
+  const camera = v.camera
+  const position = camera.positionWC.clone()
+  const height = camera.positionCartographic.height
+  v.camera.flyTo({
+    destination: position,
+    orientation: {
+      heading: 0,                            // 正北
+      pitch: Cesium.Math.toRadians(-90),      // 水平视角
+      roll: 0,
+    },
+    maximumHeight: height,
+    duration: 0.5,
+  })
 }
 
 function handleMouseDown(e: MouseEvent) {

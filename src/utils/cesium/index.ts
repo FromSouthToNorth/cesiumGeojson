@@ -1,4 +1,4 @@
-import { Ion, Viewer, Terrain, Rectangle } from 'cesium'
+import { Ion, Viewer, Rectangle, Terrain } from 'cesium'
 
 import { useAppStore } from '@/stores/appStore'
 
@@ -15,11 +15,15 @@ export function createViewer(container: HTMLElement) {
   const terrain = Terrain.fromWorldTerrain()
   const viewer = new Viewer(container, {
     terrain,
+    geocoder: false,
     animation: false,
     timeline: false,
+    homeButton: false,
+    sceneModePicker: false,
+    // selectedImageryProviderViewModel: false,
     navigationHelpButton: false,
   })
-  terrain.readyEvent.addEventListener(() => terrainEventHandler(viewer, terrain))
+  terrain.readyEvent.addEventListener(() => terrainEventHandler(viewer))
 
   return viewer
 }
@@ -30,13 +34,9 @@ export function createViewer(container: HTMLElement) {
  * @param viewer Viewer实例
  * @param terrain 地形实例
  */
-function terrainEventHandler(viewer: Viewer, terrain: Terrain) {
+function terrainEventHandler(viewer: Viewer) {
   const appStore = useAppStore()
   appStore.setLoading(false)
   const chinaRectangle = Rectangle.fromDegrees(73.5, 18.0, 135.0, 53.5)
   viewer.camera.flyTo({ destination: chinaRectangle })
-  viewer.homeButton.viewModel.command.beforeExecute.addEventListener((e: any) => {
-    e.cancel = true
-    viewer.camera.flyTo({ destination: chinaRectangle })
-  })
 }
