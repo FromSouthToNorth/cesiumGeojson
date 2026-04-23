@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import { Rectangle } from 'cesium'
 import { toRaw } from 'vue'
 import { useCesiumStore } from '@/stores/cesiumStore'
 import { Button, Tooltip } from 'ant-design-vue'
@@ -32,21 +33,20 @@ const cesiumStore = useCesiumStore()
 
 const handleHome = () => {
   const v = toRaw(cesiumStore.viewer)
-  if (!cesiumStore.hasViewer) return
-  const { Rectangle } = Cesium
+  if (!v) return
   const chinaRectangle = Rectangle.fromDegrees(73.5, 18.0, 135.0, 53.5)
   v.camera.flyTo({ destination: chinaRectangle })
 }
 
 const handleZoomIn = () => {
   const v = toRaw(cesiumStore.viewer)
-  if (!cesiumStore.hasViewer) return
+  if (!v) return
   v.camera.zoomIn(v.camera.positionCartographic.height * 0.1)
 }
 
 const handleZoomOut = () => {
   const v = toRaw(cesiumStore.viewer)
-  if (!cesiumStore.hasViewer) return
+  if (!v) return
   v.camera.zoomOut(v.camera.positionCartographic.height * 0.1)
 }
 </script>
