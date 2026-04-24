@@ -1,3 +1,7 @@
+<!--
+  components/Cesium/Toolbox.vue —— 左侧悬浮工具栏
+  三个入口（GeoJSON / 地形裁切 / 观测点），点击切换对应的 SidePanel
+-->
 <template>
   <div class="toolbox">
     <div class="toolbox-bar">
@@ -63,6 +67,7 @@ import PointCreator from './PointCreator.vue'
 
 defineOptions({ name: 'Toolbox' })
 
+/** 当前打开的工具面板名称，null 表示全部关闭 */
 const activeTool = ref<string | null>(null)
 
 function toggleTool(tool: string) {

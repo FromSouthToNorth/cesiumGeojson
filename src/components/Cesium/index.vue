@@ -1,3 +1,7 @@
+<!--
+  components/Cesium/index.vue —— Cesium 地图容器
+  创建并持有 Viewer 实例，挂载工具箱和导航控件
+-->
 <template>
   <div ref="cesiumContainer" class="cesium-container">
     <Toolbox />

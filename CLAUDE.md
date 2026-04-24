@@ -28,11 +28,17 @@ src/
 ├── stores/                    # Pinia stores
 │   ├── cesiumStore.ts         # Viewer singleton
 │   ├── geojsonStore.ts        # GeoJSON layer CRUD
-│   ├── terrainClipStore.ts    # Terrain clipping (multi-region, vertex edit, undo, persistence)
+│   ├── terrainClipStore.ts    # Terrain clipping coordinator (composes 4 sub-modules)
 │   ├── themeStore.ts          # Light/dark theme (localStorage persisted)
 │   └── appStore.ts            # Global loading state
 ├── utils/
-│   ├── cesium/index.ts        # Viewer factory (Ion token, terrain, loading state)
+│   ├── cesium/
+│   │   ├── index.ts           # Viewer factory (Ion token, terrain, loading state)
+│   │   ├── clipCommon.ts      # Terrain clip shared types & helpers
+│   │   ├── useClipHistory.ts  # Terrain clip undo/redo stack
+│   │   ├── useClipPersistence.ts # Terrain clip localStorage persistence
+│   │   ├── useClipDrawing.ts  # Terrain clip polygon drawing mode
+│   │   └── useClipEditing.ts  # Terrain clip vertex editing mode
 │   └── geojson/index.ts       # GeoJSON coordinate inspection
 ├── views/Home.vue
 ├── layouts/index.vue
@@ -75,9 +81,30 @@ src/
 - Ant Design theme syncs via `ConfigProvider` with `theme.darkAlgorithm` / `theme.defaultAlgorithm`
 - Theme choice persisted in localStorage key `cesium-theme`
 
+### Terrain Clip Architecture
+
+Terrain clipping uses a **coordinator pattern**: `terrainClipStore` is a thin coordinator that composes 4 independent composables:
+
+```
+terrainClipStore (coordinator: region CRUD, globe sync, lifecycle)
+├── useClipDrawing      — Drawing mode: left-click add vertex, double-click undo, right-click finish
+├── useClipEditing      — Vertex editing: drag, midpoint add, right-click delete, keyboard shortcuts
+├── useClipHistory      — Undo/redo stack (30 snapshots of Cartesian3[])
+└── useClipPersistence  — localStorage save/load (Cartesian3 serialized as [x,y,z])
+```
+
+Key details:
+- **Data flow**: `positions` ref shares reference with `regions[i].positions`, so mutations propagate automatically.
+- **startDraw**: The store wraps this in a `startDraw()` function that creates a new `ClipRegion`, pushes it to `regions`, links `positions` to the new region's array, THEN delegates to `useClipDrawing.startDraw()`. This ensures the region exists before any vertices are added.
+- **cancelDraw**: The store's `onCancel` callback removes the incomplete region from `regions` (happens when < 3 vertices or user cancels).
+- **Undo/redo** after editing: store calls `editing.redraw()` to refresh edit graphics after history restore.
+
 ### Coding Style
-- No JSDoc for obvious code; one-line comments for non-obvious WHY
+- Files start with `/* ===== Header ===== */` describing file responsibility (in Chinese for domain code, English for infra)
+- Vue components include `<!-- header comment -->` at the top of `<template>` explaining purpose
+- Functions get a one-line comment describing what they do and why, focusing on non-obvious logic
 - Section separators in longer files: `/* ===== Section ===== */`
+- Comments in Chinese for project-domain code (stores, components, terrain clip utils), English for generic/CLI code
 - Prefer primitive array methods (`push`, `splice`, `forEach`, `filter`) over lodash
 - Error handling: `try/catch` with `console.error` + `message.error()` from ant-design-vue
 - Use `message.warning()` for validation feedback, `message.success()` for confirmations

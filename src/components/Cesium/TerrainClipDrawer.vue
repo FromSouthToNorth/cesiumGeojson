@@ -1,13 +1,17 @@
+<!--
+  components/Cesium/TerrainClipDrawer.vue —— 地形裁切面板
+  提供绘制、编辑、管理裁切区域的 UI，与 terrainClipStore 绑定的协调器模式
+-->
 <template>
   <SidePanel :visible="visible" title="地形裁切" @update:visible="emit('update:visible', $event)">
     <Space direction="vertical" style="width: 100%">
-      <!-- Inverse toggle -->
+      <!-- Inverse 反选开关 -->
       <div>
         <span>Inverse（反选）</span>
         <Switch v-model:checked="store.inverse" style="margin-left: 8px" />
       </div>
 
-      <!-- ── Idle: no regions ── -->
+      <!-- ── 空闲状态：无区域 ── -->
       <Button
         v-if="!store.hasRegions && !store.isDrawing && !store.isEditing"
         type="primary"
@@ -17,11 +21,9 @@
         开始绘制区域
       </Button>
 
-      <!-- ── Drawing ── -->
+      <!-- ── 绘制中 ── -->
       <template v-if="store.isDrawing">
-        <Button danger block @click="store.cancelDraw()">
-          取消绘制
-        </Button>
+        <Button danger block @click="store.cancelDraw()">取消绘制</Button>
         <div class="drawing-tip">
           左键点击绘制顶点，双击左键撤销，右键点击结束绘制
         </div>
@@ -30,7 +32,7 @@
         </div>
       </template>
 
-      <!-- ── Region list (applied, not editing) ── -->
+      <!-- ── 已有区域（非编辑状态） ── -->
       <template v-if="store.hasRegions && !store.isDrawing && !store.isEditing">
         <div class="region-list">
           <div
@@ -43,24 +45,9 @@
             <span class="region-dot" />
             <span class="region-name">{{ region.name }}</span>
             <span class="region-count">{{ region.positions.length }} 顶点</span>
-
-            <Button
-              size="small"
-              type="link"
-              class="region-act-btn"
-              @click.stop="store.startEdit(region.id)"
-            >
-              编辑
-            </Button>
-
-            <Popconfirm
-              title="确认删除该区域？"
-              placement="left"
-              @confirm.stop="store.clearRegion(region.id)"
-            >
-              <Button size="small" type="link" danger class="region-act-btn" @click.stop>
-                删除
-              </Button>
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)">编辑</Button>
+            <Popconfirm title="确认删除该区域？" placement="left" @confirm.stop="store.clearRegion(region.id)">
+              <Button size="small" type="link" danger class="region-act-btn" @click.stop>删除</Button>
             </Popconfirm>
           </div>
         </div>
@@ -71,29 +58,19 @@
         </Popconfirm>
       </template>
 
-      <!-- ── Editing ── -->
+      <!-- ── 编辑中 ── -->
       <template v-if="store.isEditing">
-        <Button type="primary" block @click="store.stopEdit()">
-          完成编辑
-        </Button>
-
+        <Button type="primary" block @click="store.stopEdit()">完成编辑</Button>
         <div class="edit-toolbar">
-          <Button size="small" :disabled="!store.canUndo" @click="store.undo()">
-            撤销
-          </Button>
-          <Button size="small" :disabled="!store.canRedo" @click="store.redo()">
-            重做
-          </Button>
+          <Button size="small" :disabled="!store.canUndo" @click="store.undo()">撤销</Button>
+          <Button size="small" :disabled="!store.canRedo" @click="store.redo()">重做</Button>
         </div>
-
         <div class="editing-tip">
           拖动顶点调整形状 · 点击线段添加顶点 · 右键顶点删除<br />
           <kbd>Delete</kbd> 选中删除 · <kbd>Ctrl+Z</kbd> 撤销 · <kbd>Esc</kbd> 退出<br />
           <span class="camera-lock-hint">编辑期间相机已锁定</span>
         </div>
-        <div class="vertex-count">
-          共 {{ store.positions.length }} 个顶点
-        </div>
+        <div class="vertex-count">共 {{ store.positions.length }} 个顶点</div>
       </template>
     </Space>
   </SidePanel>
@@ -113,8 +90,7 @@ const store = useTerrainClipStore()
 </script>
 
 <style scoped>
-.drawing-tip,
-.editing-tip {
+.drawing-tip, .editing-tip {
   color: var(--color-text-secondary);
   font-size: 13px;
   line-height: 1.6;
@@ -147,8 +123,6 @@ const store = useTerrainClipStore()
   display: flex;
   gap: 8px;
 }
-
-/* ── region list ── */
 
 .region-list {
   border: 1px solid var(--panel-border);

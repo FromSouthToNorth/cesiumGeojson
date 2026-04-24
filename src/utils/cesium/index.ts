@@ -1,12 +1,16 @@
+/* ==============================
+ * Viewer 工厂函数
+ * 创建并初始化 Cesium.Viewer，设置地形和默认视野
+ * ============================== */
+
 import { Ion, Viewer, Rectangle, Terrain } from 'cesium'
 
 import { useAppStore } from '@/stores/appStore'
 
 /**
- * 创建Cesium Viewer
- * @param container 容器元素
- * @param options 配置项 参考[https://cesium.com/learn/cesiumjs/ref-doc/Viewer.html#.ConstructorOptions]
- * @returns Viewer实例
+ * 创建 Cesium Viewer
+ * @param container - 挂载容器 DOM 元素
+ * @returns Viewer 实例
  */
 export function createViewer(container: HTMLElement) {
   const appStore = useAppStore()
@@ -20,7 +24,6 @@ export function createViewer(container: HTMLElement) {
     timeline: false,
     homeButton: false,
     sceneModePicker: false,
-    // selectedImageryProviderViewModel: false,
     navigationHelpButton: false,
   })
   terrain.readyEvent.addEventListener(() => terrainEventHandler(viewer))
@@ -28,11 +31,8 @@ export function createViewer(container: HTMLElement) {
   return viewer
 }
 
-
 /**
- * 地形加载完成事件处理函数
- * @param viewer Viewer实例
- * @param terrain 地形实例
+ * 地形就绪回调：关闭 loading 遮罩，飞行至中国范围
  */
 function terrainEventHandler(viewer: Viewer) {
   const appStore = useAppStore()

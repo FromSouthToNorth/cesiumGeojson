@@ -34,10 +34,16 @@ cesiumGeojson/
 │   │   ├── appStore.ts
 │   │   ├── cesiumStore.ts             # Viewer 实例管理
 │   │   ├── geojsonStore.ts            # GeoJSON 图层管理
-│   │   ├── terrainClipStore.ts        # 地形裁剪（多区域/顶点编辑/撤销持久化）
+│   │   ├── terrainClipStore.ts        # 地形裁剪（协调器模式，组合 4 个 composable）
 │   │   └── themeStore.ts              # 主题切换（亮/暗）
 │   ├── utils/
-│   │   ├── cesium/index.ts            # Viewer 创建与初始化
+│   │   ├── cesium/
+│   │   │   ├── index.ts               # Viewer 创建与初始化
+│   │   │   ├── clipCommon.ts          # 地形裁剪：共享类型与工具函数
+│   │   │   ├── useClipHistory.ts      # 地形裁剪：撤销/重做历史栈
+│   │   │   ├── useClipPersistence.ts  # 地形裁剪：localStorage 持久化
+│   │   │   ├── useClipDrawing.ts      # 地形裁剪：绘制模式交互
+│   │   │   └── useClipEditing.ts      # 地形裁剪：顶点编辑交互
 │   │   └── geojson/index.ts           # 坐标解析工具
 │   ├── views/
 │   │   └── Home.vue
@@ -71,6 +77,10 @@ cesiumGeojson/
 - **持久化** — 裁切数据自动保存至 localStorage，页面刷新后自动恢复
 - **相机锁定** — 编辑期间自动锁定相机，避免拖拽冲突
 
+地形裁剪采用 **协调器架构**：`terrainClipStore` 作为轻量协调层，将绘制、编辑、历史栈、持久化拆分为 4 个独立 composable（`src/utils/cesium/useClip*.ts`），职责单一，可单独测试。
+
+核心数据流：`positions` ref 与 `regions[i].positions` 共享数组引用，绘制/编辑时对 `positions` 的增删改自动反映到对应区域上，通过 `syncGlobeClipping()` 同步到 Cesium globe。
+
 ### 导航控制
 
 - 主题切换（亮/暗），自动持久化到 localStorage
@@ -101,3 +111,11 @@ pnpm preview   # 预览生产构建
 ```
 / → /cesium  (Home.vue)
 ```
+
+## 代码注释约定
+
+- 每个文件顶部标注作用域说明（`/* ===== 标题 ===== */`）
+- Vue 组件的 `<template>` 顶部用 HTML 注释说明组件用途
+- 非直观逻辑处添加单行注释，说明**为什么**这样做
+- 项目领域代码（stores / components / 地形裁切工具）使用中文注释
+- 工具函数和基础设施代码使用英文注释

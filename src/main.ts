@@ -1,3 +1,8 @@
+/* ==============================
+ * 应用入口
+ * 注册 Ant Design Vue、Pinia、Vue Router 并挂载
+ * ============================== */
+
 import { createApp } from 'vue'
 import App from './App.vue'
 import Antd from 'ant-design-vue'
@@ -7,7 +12,6 @@ import './style.css'
 
 import router from './router'
 import { createPinia } from 'pinia'
-
 
 const app = createApp(App)
 app.use(Antd)

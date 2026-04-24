@@ -1,384 +1,148 @@
 import { ref, computed, watch, toRaw } from 'vue'
 import { defineStore } from 'pinia'
-import {
-  ScreenSpaceEventHandler,
-  ScreenSpaceEventType,
-  Cartesian2,
-  Cartesian3,
-  ClippingPolygon,
-  ClippingPolygonCollection,
-  Color,
-  HeightReference,
-} from 'cesium'
-import type { Viewer } from 'cesium'
-import { message } from 'ant-design-vue'
+import { Cartesian3, ClippingPolygon, ClippingPolygonCollection } from 'cesium'
 import { useCesiumStore } from './cesiumStore'
+import { isValidViewer, genId } from '@/utils/cesium/clipCommon'
+import { useClipDrawing } from '@/utils/cesium/useClipDrawing'
+import { useClipEditing } from '@/utils/cesium/useClipEditing'
+import { useClipHistory } from '@/utils/cesium/useClipHistory'
+import { useClipPersistence } from '@/utils/cesium/useClipPersistence'
+import type { ClipRegion } from '@/utils/cesium/clipCommon'
 
-/* ───────── types ───────── */
-
-interface ClipRegion {
-  id: string
-  name: string
-  positions: Cartesian3[]
-}
-
-interface PersistedData {
-  regions: { id: string; name: string; positions: number[][] }[]
-  inverse: boolean
-}
-
-const STORAGE_KEY = 'cesium-terrain-clip'
-const HISTORY_MAX = 30
-
-/* ───────── store ───────── */
-
+/**
+ * 地形裁切 Store
+ *
+ * 职责：作为协调器，组合 4 个 composable，暴露统一 API 给 UI 组件。
+ *
+ * 架构：
+ *   terrainClipStore（本例）→ 协调
+ *     ├── useClipDrawing      — 绘制模式交互
+ *     ├── useClipEditing      — 编辑模式交互
+ *     ├── useClipHistory      — 撤销/重做历史栈
+ *     └── useClipPersistence  — localStorage 持久化
+ *
+ * 核心数据流：
+ *   regions[i].positions 与 positions ref 共享引用（通过赋值 `positions.value = region.positions`）
+ *   → 绘制/编辑/历史 均操作同一 positions ref
+ *   → 变更自动反映到对应 region 上
+ *   → 调用 syncGlobeClipping() 同步到 Cesium globe
+ */
 export const useTerrainClipStore = defineStore('terrainClip', () => {
   const cesiumStore = useCesiumStore()
+  // 用 computed 包装 cesiumStore.viewer 以便 composable 接收 ComputedRef<Viewer | null>
   const viewer = computed(() => cesiumStore.viewer)
 
-  /* ── reactive state ── */
+  /* ==============================
+   *  核心状态
+   * ============================== */
 
-  const enabled = ref(false)
+  /** 反选模式 */
   const inverse = ref(false)
-  const isDrawing = ref(false)
-  const isEditing = ref(false)
-
+  /** 所有裁切区域列表 */
   const regions = ref<ClipRegion[]>([])
+  /** 当前选中的区域 ID */
   const activeRegionId = ref<string | null>(null)
-  /** linked to the active region's positions array (shared reference) */
+  /**
+   * 当前活动区域的顶点坐标数组
+   * 重要：通过 `positions.value = region.positions` 与 regions[i].positions 共享引用，
+   *       对 positions 的修改会直接反映到对应的 region 上。
+   */
   const positions = ref<Cartesian3[]>([])
-
-  /* ── undo / redo ── */
-
-  const history = ref<Cartesian3[][]>([])
-  const historyIndex = ref(-1)
-
-  const canUndo = computed(() => historyIndex.value > 0)
-  const canRedo = computed(() => historyIndex.value < history.value.length - 1)
+  /** 是否有任何区域（UI 用） */
   const hasRegions = computed(() => regions.value.length > 0)
+  /** 是否有有效（>= 3 顶点）区域（UI 用） */
+  const enabled = computed(() => regions.value.some((r) => r.positions.length >= 3))
 
-  /* ── drawing entities ── */
+  /* ==============================
+   *  实例化子模块
+   * ============================== */
 
-  let handler: ScreenSpaceEventHandler | null = null
-  let polylineEntity: any = null
-  let pointEntities: any[] = []
-
-  /* ── editing entities ── */
-
-  let editingHandler: ScreenSpaceEventHandler | null = null
-  let editPolygonEntity: any = null
-  let editPolylineEntity: any = null
-  let editPointEntities: any[] = []
-  let editMidpointEntities: any[] = []
-  let dragState: { index: number } | null = null
-  let lastMousePos: Cartesian2 | null = null
-
-  /* ── undo / redo ── */
-
-  function pushHistory() {
-    const snap = positions.value.map((p) => Cartesian3.clone(p))
-    history.value = history.value.slice(0, historyIndex.value + 1)
-    history.value.push(snap)
-    historyIndex.value = history.value.length - 1
-    if (history.value.length > HISTORY_MAX) {
-      history.value.shift()
-      historyIndex.value--
-    }
-  }
-
-  function undo() {
-    if (historyIndex.value <= 0) return
-    historyIndex.value--
-    applyHistory(history.value[historyIndex.value])
-    saveToStorage()
-  }
-
-  function redo() {
-    if (historyIndex.value >= history.value.length - 1) return
-    historyIndex.value++
-    applyHistory(history.value[historyIndex.value])
-    saveToStorage()
-  }
-
-  function applyHistory(snap: Cartesian3[]) {
-    positions.value.length = 0
-    snap.forEach((p) => positions.value.push(Cartesian3.clone(p)))
-    if (isEditing.value) {
-      drawEditGraphics()
-    }
-    syncGlobeClipping()
-    if (isEditing.value) {
-      drawEditGraphics()
-    }
-  }
-
-  /* ── helpers ── */
-
-  function genId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-  }
-
-  function isValidViewer(v: any): boolean {
-    return v && !v.isDestroyed()
-  }
-
-  function linkPositions(region: ClipRegion) {
-    positions.value = region.positions
-  }
-
-  /* ── persistence ── */
-
-  function saveToStorage() {
-    const data: PersistedData = {
-      regions: regions.value.map((r) => ({
-        id: r.id,
-        name: r.name,
-        positions: r.positions.map((p) => [p.x, p.y, p.z]),
-      })),
-      inverse: inverse.value,
-    }
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    } catch {
-      /* quota exceeded – ignore */
-    }
-  }
-
-  function loadFromStorage() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return
-      const data: PersistedData = JSON.parse(raw)
-      if (!data.regions?.length) return
-      regions.value = data.regions.map((r) => ({
-        id: r.id,
-        name: r.name ?? '区域',
-        positions: r.positions.map(([x, y, z]) => new Cartesian3(x, y, z)),
-      }))
-      inverse.value = data.inverse ?? false
-      const last = regions.value[regions.value.length - 1]
-      activeRegionId.value = last.id
-      linkPositions(last)
-    } catch {
-      /* corrupt data – ignore */
-    }
-  }
-
-  /* ========================= Drawing ========================= */
-
+  /** 开始绘制新区域 */
   function startDraw() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) {
-      message.warning('Cesium 尚未初始化')
-      return
-    }
-    if (isDrawing.value) return
-    if (isEditing.value) stopEdit()
-
+    // 创建新区域并与 positions 建立共享引用
     const region: ClipRegion = { id: genId(), name: `区域 ${regions.value.length + 1}`, positions: [] }
     regions.value.push(region)
     activeRegionId.value = region.id
-    linkPositions(region)
+    positions.value = region.positions
 
-    clearDrawGraphics()
-    isDrawing.value = true
-
-    handler = new ScreenSpaceEventHandler(v.canvas)
-
-    handler.setInputAction((movement: any) => {
-      const v2 = toRaw(viewer.value)
-      if (!isValidViewer(v2)) return
-      const cartesian = pickGlobe(v2, movement.position)
-      if (cartesian) {
-        positions.value.push(Cartesian3.clone(cartesian))
-        drawHelper()
-      }
-    }, ScreenSpaceEventType.LEFT_CLICK)
-
-    handler.setInputAction((movement: any) => {
-      const v2 = toRaw(viewer.value)
-      if (!isValidViewer(v2)) return
-      const cartesian = pickGlobe(v2, movement.position)
-      if (cartesian && positions.value.length > 0) {
-        const dist = Cartesian3.distance(cartesian, positions.value[positions.value.length - 1])
-        if (dist < 5) {
-          finishDraw()
-          return
-        }
-      }
-      undoLastVertex()
-    }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
-
-    handler.setInputAction(() => {
-      finishDraw()
-    }, ScreenSpaceEventType.RIGHT_CLICK)
+    drawing.startDraw()
   }
 
-  function finishDraw() {
-    isDrawing.value = false
-    if (handler) {
-      handler.destroy()
-      handler = null
-    }
-    clearDrawGraphics()
+  /** 历史栈 */
+  const history = useClipHistory(positions)
 
-    if (positions.value.length < 3) {
-      message.warning('请至少绘制 3 个点')
+  /** 绘制模式 */
+  const drawing = useClipDrawing({
+    viewer,
+    positions,
+    onFinish: () => {
+      // 绘制完成 → 记录历史 + 同步裁切 + 保存
+      history.pushHistory()
+      syncGlobeClipping()
+      persistence.save()
+    },
+    onCancel: () => {
+      // 绘制取消/无效 → 移除该空区域
       regions.value = regions.value.filter((r) => r.id !== activeRegionId.value)
       const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null
       activeRegionId.value = prev?.id ?? null
       positions.value = prev?.positions ?? []
-      return
-    }
+      if (!prev) syncGlobeClipping()
+    },
+  })
 
-    pushHistory()
+  /** 编辑模式 */
+  const editing = useClipEditing({
+    viewer,
+    positions,
+    // 进入编辑时记录初始状态快照，以便 undo 回退到此状态
+    onStart: () => history.pushHistory(),
+    onChange: () => {
+      // 顶点变更 → 记录历史 + 同步裁切 + 保存
+      history.pushHistory()
+      syncGlobeClipping()
+      persistence.save()
+    },
+  })
+
+  /** 持久化 */
+  const persistence = useClipPersistence(regions, inverse)
+
+  /* ==============================
+   *  撤销 / 重做（带裁切同步）
+   * ============================== */
+
+  /** 撤销：历史回退 + 同步 globe + 保存 + 刷新编辑图形 */
+  function undo() {
+    if (!history.undo()) return
     syncGlobeClipping()
-    saveToStorage()
+    persistence.save()
+    if (editing.isEditing.value) editing.redraw()
   }
 
-  function cancelDraw() {
-    isDrawing.value = false
-    if (handler) {
-      handler.destroy()
-      handler = null
-    }
-    clearDrawGraphics()
-    regions.value = regions.value.filter((r) => r.id !== activeRegionId.value)
-    const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null
-    activeRegionId.value = prev?.id ?? null
-    positions.value = prev?.positions ?? []
-    if (!prev) syncGlobeClipping()
+  /** 重做：历史前进 + 同步 globe + 保存 + 刷新编辑图形 */
+  function redo() {
+    if (!history.redo()) return
+    syncGlobeClipping()
+    persistence.save()
+    if (editing.isEditing.value) editing.redraw()
   }
 
-  function undoLastVertex() {
-    if (positions.value.length === 0) return
-    positions.value.pop()
-    drawHelper()
-  }
+  /* ==============================
+   *  区域管理
+   * ============================== */
 
-  function drawHelper() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    if (polylineEntity) {
-      v.entities.remove(polylineEntity)
-      polylineEntity = null
-    }
-    pointEntities.forEach((e) => v.entities.remove(e))
-    pointEntities = []
-
-    const pos = positions.value
-    pos.forEach((p) => {
-      pointEntities.push(
-        v.entities.add({
-          position: p,
-          point: {
-            pixelSize: 8,
-            color: Color.YELLOW,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            heightReference: HeightReference.CLAMP_TO_GROUND,
-          },
-        }),
-      )
-    })
-    if (pos.length > 1) {
-      polylineEntity = v.entities.add({
-        polyline: {
-          positions: [...pos, pos[0]],
-          width: 2,
-          material: Color.YELLOW,
-          clampToGround: true,
-        },
-      })
-    }
-  }
-
-  function clearDrawGraphics() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    if (polylineEntity) {
-      v.entities.remove(polylineEntity)
-      polylineEntity = null
-    }
-    pointEntities.forEach((e) => v.entities.remove(e))
-    pointEntities = []
-  }
-
-  /* ========================= Clipping ========================= */
-
-  function pickGlobe(v: any, pos: Cartesian2): Cartesian3 | null {
-    const ray = v.camera.getPickRay(pos)
-    let cartesian = ray ? v.scene.globe.pick(ray, v.scene) : null
-    if (!cartesian) {
-      cartesian = v.camera.pickEllipsoid(pos, v.scene.globe.ellipsoid)
-    }
-    return cartesian
-  }
-
-  function syncGlobeClipping() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-
-    const valid = regions.value.filter((r) => r.positions.length >= 3)
-    if (valid.length === 0) {
-      v.scene.globe.clippingPolygons = new ClippingPolygonCollection()
-      v.scene.globe.depthTestAgainstTerrain = false
-      enabled.value = false
-      return
-    }
-
-    v.scene.globe.depthTestAgainstTerrain = true
-    const polygons = valid.map((r) => new ClippingPolygon({ positions: r.positions }))
-    v.scene.globe.clippingPolygons = new ClippingPolygonCollection({ polygons, inverse: inverse.value })
-    enabled.value = true
-  }
-
-  /* ========================= Region management ========================= */
-
+  /** 选中某个区域（切换活动区域） */
   function selectRegion(id: string) {
-    if (isDrawing.value || isEditing.value) return
+    if (drawing.isDrawing.value || editing.isEditing.value) return
     const region = regions.value.find((r) => r.id === id)
     if (!region) return
     activeRegionId.value = region.id
-    linkPositions(region)
+    // 建立共享引用，后续所有操作针对该区域的顶点
+    positions.value = region.positions
   }
 
-  function clearRegion(id: string) {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    if (isEditing.value) stopEdit()
-    if (isDrawing.value) {
-      cancelDraw()
-      return
-    }
-    regions.value = regions.value.filter((r) => r.id !== id)
-    if (activeRegionId.value === id) {
-      const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null
-      activeRegionId.value = prev?.id ?? null
-      positions.value = prev?.positions ?? []
-    }
-    syncGlobeClipping()
-    saveToStorage()
-  }
-
-  function clearAll() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    if (isEditing.value) stopEdit()
-    if (isDrawing.value) {
-      cancelDraw()
-      return
-    }
-    regions.value = []
-    activeRegionId.value = null
-    positions.value = []
-    history.value.length = 0
-    historyIndex.value = -1
-    syncGlobeClipping()
-    localStorage.removeItem(STORAGE_KEY)
-  }
-
-  /* ========================= Editing ========================= */
-
+  /** 进入编辑模式（可选指定区域 ID） */
   function startEdit(regionId?: string) {
     const id = regionId ?? activeRegionId.value
     if (!id) return
@@ -387,322 +151,85 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
 
     if (activeRegionId.value !== id) {
       activeRegionId.value = id
-      linkPositions(region)
+      positions.value = region.positions
     }
-
-    // push a snapshot at the start of editing
-    pushHistory()
-
-    // 锁定相机：编辑期间禁用相机拖拽以避免与顶点拖拽冲突
-    const v = toRaw(viewer.value)
-    if (isValidViewer(v)) {
-      v.scene.screenSpaceCameraController.enableInputs = false
-    }
-
-    isEditing.value = true
-    drawEditGraphics()
-    setupEditHandler()
-    setupKeyboardListener()
+    editing.startEdit()
   }
 
-  function stopEdit() {
-    // 恢复相机控制
-    const v = toRaw(viewer.value)
-    if (isValidViewer(v)) {
-      v.scene.screenSpaceCameraController.enableInputs = true
-    }
-
-    isEditing.value = false
-    clearEditGraphics()
-    destroyEditHandler()
-    teardownKeyboardListener()
-    dragState = null
-    // history stays so user can undo after exiting edit mode
-  }
-
-  /* ── edit graphics (in-place updates) ── */
-
-  function clearEditGraphics() {
+  /** 删除指定区域 */
+  function clearRegion(id: string) {
     const v = toRaw(viewer.value)
     if (!isValidViewer(v)) return
-    const remove = (e: any) => v.entities.remove(e)
-    if (editPolygonEntity) { remove(editPolygonEntity); editPolygonEntity = null }
-    if (editPolylineEntity) { remove(editPolylineEntity); editPolylineEntity = null }
-    editPointEntities.forEach(remove)
-    editPointEntities = []
-    editMidpointEntities.forEach(remove)
-    editMidpointEntities = []
-  }
-
-  function drawEditGraphics() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    clearEditGraphics()
-
-    const pos = positions.value
-    const n = pos.length
-
-    editPolygonEntity = v.entities.add({
-      polygon: {
-        hierarchy: [...pos],
-        material: Color.CYAN.withAlpha(0.12),
-        heightReference: HeightReference.CLAMP_TO_GROUND,
-      },
-    })
-    editPolylineEntity = v.entities.add({
-      polyline: {
-        positions: [...pos, pos[0]],
-        width: 2,
-        material: Color.CYAN,
-        clampToGround: true,
-      },
-    })
-
-    pos.forEach((p) => {
-      editPointEntities.push(
-        v.entities.add({
-          position: p,
-          point: {
-            pixelSize: 11,
-            color: Color.YELLOW,
-            outlineColor: Color.WHITE,
-            outlineWidth: 2,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            heightReference: HeightReference.CLAMP_TO_GROUND,
-          },
-        }),
-      )
-    })
-
-    for (let i = 0; i < n; i++) {
-      const next = (i + 1) % n
-      const mid = Cartesian3.midpoint(pos[i], pos[next], new Cartesian3())
-      editMidpointEntities.push(
-        v.entities.add({
-          position: mid,
-          point: {
-            pixelSize: 8,
-            color: Color.LIME,
-            outlineColor: Color.WHITE,
-            outlineWidth: 1,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            heightReference: HeightReference.CLAMP_TO_GROUND,
-          },
-        }),
-      )
-    }
-  }
-
-  /** In-place update during drag – avoids full rebuild */
-  function updateEditVertex(index: number, pos: Cartesian3) {
-    const ent = editPointEntities[index]
-    if (ent) ent.position = pos
-
-    if (editPolylineEntity) {
-      editPolylineEntity.polyline.positions = [...positions.value, positions.value[0]]
-    }
-    if (editPolygonEntity) {
-      editPolygonEntity.polygon.hierarchy = [...positions.value]
-    }
-
-    // update the two adjacent midpoints
-    const n = positions.value.length
-    const prev = (index - 1 + n) % n
-    const next = (index + 1) % n
-
-    if (editMidpointEntities[prev]) {
-      const mp = Cartesian3.midpoint(positions.value[prev], positions.value[index], new Cartesian3())
-      editMidpointEntities[prev].position = mp
-    }
-    if (editMidpointEntities[index]) {
-      const mp = Cartesian3.midpoint(positions.value[index], positions.value[next], new Cartesian3())
-      editMidpointEntities[index].position = mp
-    }
-  }
-
-  /* ── edit interaction handlers ── */
-
-  function setupEditHandler() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-
-    editingHandler = new ScreenSpaceEventHandler(v.canvas)
-
-    // LEFT_DOWN – start dragging a vertex
-    editingHandler.setInputAction((click: any) => {
-      const v2 = toRaw(viewer.value)
-      if (!isValidViewer(v2)) return
-      const picked = v2.scene.pick(click.position)
-      if (picked?.id) {
-        const idx = editPointEntities.indexOf(picked.id)
-        if (idx !== -1) {
-          dragState = { index: idx }
-          v2.canvas.style.cursor = 'grabbing'
-        }
-      }
-    }, ScreenSpaceEventType.LEFT_DOWN)
-
-    // MOUSE_MOVE – drag vertex AND cursor feedback
-    editingHandler.setInputAction((movement: any) => {
-      lastMousePos = movement.endPosition
-      const v2 = toRaw(viewer.value)
-      if (!isValidViewer(v2)) return
-
-      // cursor feedback
-      const picked = v2.scene.pick(movement.endPosition)
-      if (picked?.id) {
-        if (dragState) {
-          v2.canvas.style.cursor = 'grabbing'
-        } else if (editPointEntities.indexOf(picked.id) !== -1) {
-          v2.canvas.style.cursor = 'grab'
-        } else if (editMidpointEntities.indexOf(picked.id) !== -1) {
-          v2.canvas.style.cursor = 'pointer'
-        } else {
-          v2.canvas.style.cursor = 'default'
-        }
-      } else {
-        v2.canvas.style.cursor = 'default'
-      }
-
-      if (!dragState) return
-      const cartesian = pickGlobe(v2, movement.endPosition)
-      if (cartesian) {
-        positions.value[dragState.index] = cartesian
-        updateEditVertex(dragState.index, cartesian)
-      }
-    }, ScreenSpaceEventType.MOUSE_MOVE)
-
-    // LEFT_UP – end drag
-    editingHandler.setInputAction(() => {
-      if (dragState) {
-        dragState = null
-        const v2 = toRaw(viewer.value)
-        if (isValidViewer(v2)) v2.canvas.style.cursor = 'default'
-        pushHistory()
-        syncGlobeClipping()
-        drawEditGraphics()
-        saveToStorage()
-      }
-    }, ScreenSpaceEventType.LEFT_UP)
-
-    // LEFT_CLICK on midpoint → add vertex
-    editingHandler.setInputAction((click: any) => {
-      if (dragState) return
-      const v2 = toRaw(viewer.value)
-      if (!isValidViewer(v2)) return
-      const picked = v2.scene.pick(click.position)
-      if (picked?.id) {
-        const idx = editMidpointEntities.indexOf(picked.id)
-        if (idx !== -1) {
-          const next = (idx + 1) % positions.value.length
-          const mid = Cartesian3.midpoint(positions.value[idx], positions.value[next], new Cartesian3())
-          positions.value.splice(next, 0, mid)
-          pushHistory()
-          drawEditGraphics()
-          syncGlobeClipping()
-          drawEditGraphics()
-          saveToStorage()
-        }
-      }
-    }, ScreenSpaceEventType.LEFT_CLICK)
-
-    // RIGHT_CLICK on vertex → delete
-    editingHandler.setInputAction((click: any) => {
-      const v2 = toRaw(viewer.value)
-      if (!isValidViewer(v2)) return
-      const picked = v2.scene.pick(click.position)
-      if (picked?.id) {
-        const idx = editPointEntities.indexOf(picked.id)
-        if (idx !== -1) {
-          removeVertexByIndex(idx)
-        }
-      }
-    }, ScreenSpaceEventType.RIGHT_CLICK)
-  }
-
-  function destroyEditHandler() {
-    if (editingHandler) {
-      editingHandler.destroy()
-      editingHandler = null
-    }
-  }
-
-  /** Shared safe deletion: ensures polygon always has >= 3 vertices */
-  function removeVertexByIndex(idx: number) {
-    if (idx < 0 || idx >= positions.value.length) return
-    if (positions.value.length <= 3) {
-      message.warning('至少需要 3 个顶点，无法继续删除')
+    if (editing.isEditing.value) editing.stopEdit()
+    if (drawing.isDrawing.value) {
+      drawing.cancelDraw()
       return
     }
-    positions.value.splice(idx, 1)
-    pushHistory()
-    drawEditGraphics()
+    regions.value = regions.value.filter((r) => r.id !== id)
+    // 如果删除的是当前活动区域，自动切换到最后一个区域
+    if (activeRegionId.value === id) {
+      const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null
+      activeRegionId.value = prev?.id ?? null
+      positions.value = prev?.positions ?? []
+    }
     syncGlobeClipping()
-    drawEditGraphics()
-    saveToStorage()
+    persistence.save()
   }
 
-  /* ── keyboard shortcuts ── */
+  /** 清除所有区域 */
+  function clearAll() {
+    const v = toRaw(viewer.value)
+    if (!isValidViewer(v)) return
+    if (editing.isEditing.value) editing.stopEdit()
+    if (drawing.isDrawing.value) {
+      drawing.cancelDraw()
+      return
+    }
+    regions.value = []
+    activeRegionId.value = null
+    positions.value = []
+    history.reset()
+    syncGlobeClipping()
+    persistence.clear()
+  }
 
-  let keyboardActive = false
+  /* ==============================
+   *  同步到 Cesium Globe
+   * ============================== */
 
-  function onKeyDown(e: KeyboardEvent) {
-    if (!isEditing.value) return
+  /**
+   * 将当前 regions 同步到 scene.globe.clippingPolygons
+   * 每次调用都会重建 ClippingPolygonCollection
+   */
+  function syncGlobeClipping() {
+    const v = toRaw(viewer.value)
+    if (!isValidViewer(v)) return
 
-    // Escape → exit edit
-    if (e.key === 'Escape') {
-      stopEdit()
+    const valid = regions.value.filter((r) => r.positions.length >= 3)
+    if (valid.length === 0) {
+      // 没有有效区域 → 清空裁切
+      v.scene.globe.clippingPolygons = new ClippingPolygonCollection()
+      v.scene.globe.depthTestAgainstTerrain = false
       return
     }
 
-    // Delete / Backspace → remove picked vertex
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      const pos = lastMousePos
-      if (!pos) return
-      const v = toRaw(viewer.value)
-      if (!isValidViewer(v)) return
-      const picked = v.scene.pick(pos)
-      if (picked?.id) {
-        const idx = editPointEntities.indexOf(picked.id)
-        if (idx !== -1) {
-          e.preventDefault()
-          removeVertexByIndex(idx)
-        }
-      }
-      return
-    }
-
-    // Ctrl+Z / Ctrl+Shift+Z undo/redo
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-      e.preventDefault()
-      if (e.shiftKey) {
-        redo()
-      } else {
-        undo()
-      }
-    }
+    v.scene.globe.depthTestAgainstTerrain = true
+    const polygons = valid.map((r) => new ClippingPolygon({ positions: r.positions }))
+    v.scene.globe.clippingPolygons = new ClippingPolygonCollection({
+      polygons,
+      inverse: inverse.value,
+    })
   }
 
-  function setupKeyboardListener() {
-    if (keyboardActive) return
-    keyboardActive = true
-    window.addEventListener('keydown', onKeyDown)
-  }
+  /* ==============================
+   *  生命周期
+   * ============================== */
 
-  function teardownKeyboardListener() {
-    if (!keyboardActive) return
-    keyboardActive = false
-    window.removeEventListener('keydown', onKeyDown)
-  }
-
-  /* ========================= Lifecycle ========================= */
-
+  /** 销毁所有子模块资源并重置状态 */
   function destroy() {
-    if (handler) { handler.destroy(); handler = null }
-    if (editingHandler) { editingHandler.destroy(); editingHandler = null }
-    teardownKeyboardListener()
-    clearDrawGraphics()
-    clearEditGraphics()
+    drawing.destroy()
+    editing.destroy()
+    history.reset()
     const v = toRaw(viewer.value)
     if (isValidViewer(v)) {
       v.scene.globe.clippingPolygons = new ClippingPolygonCollection()
@@ -711,54 +238,71 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     regions.value = []
     activeRegionId.value = null
     positions.value = []
-    history.value.length = 0
-    historyIndex.value = -1
-    enabled.value = false
-    isDrawing.value = false
-    isEditing.value = false
-    dragState = null
-    lastMousePos = null
+    inverse.value = false
   }
 
-  /* ── auto-load on viewer ready ── */
-
+  // 只加载一次标志
   let loadedOnce = false
 
-  watch(cesiumStore.viewer, (v) => {
+  // Viewer 就绪后自动从 localStorage 恢复数据
+  watch(() => cesiumStore.viewer, (v) => {
     if (v && !v.isDestroyed() && !loadedOnce) {
       loadedOnce = true
-      loadFromStorage()
-      if (regions.value.length > 0) syncGlobeClipping()
+      const loaded = persistence.load()
+      if (loaded && loaded.length > 0) {
+        regions.value = loaded
+        const last = loaded[loaded.length - 1]
+        activeRegionId.value = last.id
+        positions.value = last.positions
+        syncGlobeClipping()
+      }
     }
+    // Viewer 被销毁时清理全部状态
     if (!v) {
       destroy()
       loadedOnce = false
     }
   })
 
+  // inverse 变更时同步监听
   watch(inverse, () => {
     if (hasRegions.value) {
       syncGlobeClipping()
-      saveToStorage()
-      if (isEditing.value) drawEditGraphics()
+      persistence.save()
+      if (editing.isEditing.value) editing.redraw()
     }
   })
 
-  /* ========================= exports ========================= */
+  /* ==============================
+   *  导出给 UI 组件使用
+   * ============================== */
 
   return {
     // state
-    enabled, inverse, isDrawing, isEditing,
-    regions, activeRegionId, positions,
-    canUndo, canRedo, hasRegions,
+    enabled,
+    inverse,
+    isDrawing: drawing.isDrawing,
+    isEditing: editing.isEditing,
+    regions,
+    activeRegionId,
+    positions,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
+    hasRegions,
     // drawing
-    startDraw, cancelDraw, undoLastVertex,
+    startDraw,
+    cancelDraw: drawing.cancelDraw,
+    undoLastVertex: drawing.undoLastVertex,
     // regions
-    selectRegion, clearRegion, clearAll,
+    selectRegion,
+    startEdit,
+    clearRegion,
+    clearAll,
     // editing
-    startEdit, stopEdit,
+    stopEdit: editing.stopEdit,
     // undo / redo
-    undo, redo,
+    undo,
+    redo,
     // lifecycle
     destroy,
   }

@@ -1,3 +1,8 @@
+<!--
+  components/Cesium/GeoJsonDrawer.vue —— GeoJSON 管理面板
+  上传 .geojson/.json 文件，自动解析并着色渲染，
+  支持图层列表搜索、显隐、删除、要素属性查看
+-->
 <template>
   <SidePanel :visible="visible" title="GeoJSON 管理" @update:visible="emit('update:visible', $event)">
     <Upload :before-upload="handleUpload" accept=".geojson,.json" :show-upload-list="false">
@@ -36,42 +41,19 @@
                 </div>
                 <div class="layer-actions">
                   <Tooltip title="定位图层">
-                    <Button
-                      type="text"
-                      size="small"
-                      class="action-btn"
-                      aria-label="定位图层"
-                      @click.stop="geoJsonStore.flyToLayer(layer.id)"
-                    >
+                    <Button type="text" size="small" class="action-btn" @click.stop="geoJsonStore.flyToLayer(layer.id)">
                       <EnvironmentOutlined />
                     </Button>
                   </Tooltip>
                   <Tooltip :title="layer.show ? '隐藏图层' : '显示图层'">
-                    <Button
-                      type="text"
-                      size="small"
-                      class="action-btn"
-                      :aria-label="layer.show ? '隐藏图层' : '显示图层'"
-                      @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)"
-                    >
+                    <Button type="text" size="small" class="action-btn" @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)">
                       <EyeOutlined v-if="layer.show" />
                       <EyeInvisibleOutlined v-else />
                     </Button>
                   </Tooltip>
-                  <Popconfirm
-                    title="确认删除该图层？"
-                    placement="topRight"
-                    @confirm.stop="geoJsonStore.removeLayer(layer.id)"
-                  >
+                  <Popconfirm title="确认删除该图层？" placement="topRight" @confirm.stop="geoJsonStore.removeLayer(layer.id)">
                     <Tooltip title="删除图层">
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        class="action-btn"
-                        aria-label="删除图层"
-                        @click.stop
-                      >
+                      <Button type="text" danger size="small" class="action-btn" @click.stop>
                         <DeleteOutlined />
                       </Button>
                     </Tooltip>
@@ -80,11 +62,7 @@
               </div>
             </template>
 
-            <List
-              :data-source="layer.features"
-              size="small"
-              :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }"
-            >
+            <List :data-source="layer.features" size="small" :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }">
               <template #renderItem="{ item }">
                 <div class="feature-wrapper">
                   <ListItem class="feature-item" @click="geoJsonStore.flyToFeature(item.entity)">
@@ -94,49 +72,26 @@
                     </div>
                     <div class="feature-actions">
                       <Tooltip title="查看属性">
-                        <Button
-                          type="text"
-                          size="small"
-                          class="action-btn"
-                          aria-label="查看属性"
-                          @click.stop="toggleFeatureProperties(item.id)"
-                        >
+                        <Button type="text" size="small" class="action-btn" @click.stop="toggleFeatureProperties(item.id)">
                           <InfoCircleOutlined />
                         </Button>
                       </Tooltip>
                       <Tooltip title="定位要素">
-                        <Button
-                          type="text"
-                          size="small"
-                          class="action-btn"
-                          aria-label="定位要素"
-                          @click.stop="geoJsonStore.flyToFeature(item.entity)"
-                        >
+                        <Button type="text" size="small" class="action-btn" @click.stop="geoJsonStore.flyToFeature(item.entity)">
                           <AimOutlined />
                         </Button>
                       </Tooltip>
                     </div>
                   </ListItem>
 
-                  <div
-                    v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
-                    class="feature-properties"
-                  >
+                  <div v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length" class="feature-properties">
                     <Descriptions bordered :column="1" size="small">
-                      <DescriptionsItem
-                        v-for="(val, key) in item.properties"
-                        :key="key"
-                        :label="String(key)"
-                      >
+                      <DescriptionsItem v-for="(val, key) in item.properties" :key="key" :label="String(key)">
                         <span class="property-value" :title="String(val)">{{ val }}</span>
                       </DescriptionsItem>
                     </Descriptions>
                   </div>
-
-                  <div
-                    v-else-if="expandedFeatureIds.has(item.id)"
-                    class="feature-properties-empty"
-                  >
+                  <div v-else-if="expandedFeatureIds.has(item.id)" class="feature-properties-empty">
                     <Empty description="暂无属性" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
                   </div>
                 </div>
@@ -157,25 +112,12 @@
 import { ref, computed, watch, nextTick, useTemplateRef } from 'vue'
 import { useGeoJsonStore } from '@/stores/geojsonStore'
 import {
-  Button,
-  Upload,
-  List,
-  Collapse,
-  CollapsePanel,
-  Tooltip,
-  Popconfirm,
-  Empty,
-  Input,
-  Descriptions,
+  Button, Upload, List, Collapse, CollapsePanel,
+  Tooltip, Popconfirm, Empty, Input, Descriptions,
 } from 'ant-design-vue'
 import {
-  UploadOutlined,
-  EnvironmentOutlined,
-  DeleteOutlined,
-  AimOutlined,
-  InfoCircleOutlined,
-  EyeOutlined,
-  EyeInvisibleOutlined,
+  UploadOutlined, EnvironmentOutlined, DeleteOutlined,
+  AimOutlined, InfoCircleOutlined, EyeOutlined, EyeInvisibleOutlined,
 } from '@ant-design/icons-vue'
 import SidePanel from './SidePanel.vue'
 
@@ -189,28 +131,28 @@ const ListItem = List.Item
 const DescriptionsItem = Descriptions.Item
 
 const geoJsonStore = useGeoJsonStore()
-const activeKeys = ref<string[]>([])
-const searchQuery = ref('')
+const activeKeys = ref<string[]>([])        // 展开的 CollapsePanel key
+const searchQuery = ref('')                  // 搜索关键词
 const isUploading = ref(false)
 const scrollRef = useTemplateRef<HTMLDivElement>('scrollRef')
-const expandedFeatureIds = ref<Set<string>>(new Set())
+const expandedFeatureIds = ref<Set<string>>(new Set())  // 已展开属性的要素
 
+/** 切换要素属性的展开/收起 */
 function toggleFeatureProperties(featureId: string) {
   const next = new Set(expandedFeatureIds.value)
-  if (next.has(featureId)) {
-    next.delete(featureId)
-  } else {
-    next.add(featureId)
-  }
+  if (next.has(featureId)) next.delete(featureId)
+  else next.add(featureId)
   expandedFeatureIds.value = next
 }
 
+/** 根据搜索词过滤图层列表 */
 const filteredLayers = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return geoJsonStore.layers
   return geoJsonStore.layers.filter(layer => layer.name.toLowerCase().includes(query))
 })
 
+/** 新图层添加时自动展开并滚动到顶部 */
 watch(
   () => geoJsonStore.layers.length,
   async (newLength, oldLength) => {
@@ -232,7 +174,7 @@ const handleUpload = async (file: File) => {
   } finally {
     isUploading.value = false
   }
-  return false
+  return false   // 阻止默认上传行为
 }
 </script>
 

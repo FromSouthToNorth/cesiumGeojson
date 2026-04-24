@@ -1,36 +1,30 @@
+<!--
+  components/Cesium/PointCreator.vue —— 观测点创建面板
+  输入经纬度创建标记点，支持采样地形高度，
+  创建后可自动围绕旋转，管理已创建的点列表
+-->
 <template>
   <SidePanel :visible="visible" title="添加观测点" @update:visible="emit('update:visible', $event)">
     <Form layout="vertical" :model="form">
       <Form.Item label="经度 (Longitude)" required>
         <InputNumber
           v-model:value="form.lng"
-          :min="-180"
-          :max="180"
-          :step="0.01"
-          :precision="6"
-          style="width: 100%"
-          placeholder="例如: 116.397"
+          :min="-180" :max="180" :step="0.01" :precision="6"
+          style="width: 100%" placeholder="例如: 116.397"
         />
       </Form.Item>
       <Form.Item label="纬度 (Latitude)" required>
         <InputNumber
           v-model:value="form.lat"
-          :min="-90"
-          :max="90"
-          :step="0.01"
-          :precision="6"
-          style="width: 100%"
-          placeholder="例如: 39.908"
+          :min="-90" :max="90" :step="0.01" :precision="6"
+          style="width: 100%" placeholder="例如: 39.908"
         />
       </Form.Item>
       <Form.Item label="海拔 (Height) 米 — 留空自动使用地形高度">
         <InputNumber
           v-model:value="form.alt"
-          :min="-1000"
-          :max="90000"
-          :step="1"
-          style="width: 100%"
-          placeholder="留空则采样地形高度"
+          :min="-1000" :max="90000" :step="1"
+          style="width: 100%" placeholder="留空则采样地形高度"
         />
       </Form.Item>
       <Form.Item>
@@ -38,8 +32,7 @@
       </Form.Item>
       <Form.Item>
         <Button type="primary" block :loading="isCreating" @click="handleCreate">
-          <EnvironmentOutlined />
-          创建点位
+          <EnvironmentOutlined /> 创建点位
         </Button>
       </Form.Item>
     </Form>
@@ -71,35 +64,22 @@
 <script setup lang="ts">
 import { ref, reactive, toRaw, h, onUnmounted } from 'vue'
 import {
-  Button,
-  Form,
-  InputNumber,
-  Checkbox,
-  Popconfirm,
-  Dropdown,
-  message,
+  Button, Form, InputNumber, Checkbox, Popconfirm, Dropdown, message,
 } from 'ant-design-vue'
 import {
-  EnvironmentOutlined,
-  AimOutlined,
-  CloseOutlined,
-  ZoomInOutlined,
-  MoreOutlined,
+  EnvironmentOutlined, AimOutlined, CloseOutlined, ZoomInOutlined, MoreOutlined,
 } from '@ant-design/icons-vue'
 import { useCesiumStore } from '@/stores/cesiumStore'
 import {
-  Cartesian3,
-  Cartographic,
-  sampleTerrain,
-  HeadingPitchRange,
-  Math as CesiumMath,
-  Matrix4,
-  Color,
+  Cartesian3, Cartographic, sampleTerrain,
+  HeadingPitchRange, Math as CesiumMath, Matrix4, Color,
 } from 'cesium'
 import type { Viewer, Entity } from 'cesium'
 import SidePanel from './SidePanel.vue'
 
 defineOptions({ name: 'PointCreator' })
+
+/* ───────── 类型 ───────── */
 
 interface PointRecord {
   id: number
@@ -108,15 +88,19 @@ interface PointRecord {
   lat: number
 }
 
+/* ───────── props & emits ───────── */
+
 defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
+
+/* ───────── 状态 ───────── */
 
 const cesiumStore = useCesiumStore()
 const isCreating = ref(false)
 const autoRotate = ref(true)
-const isRotating = ref(false)
-const rotatingPointId = ref<number | null>(null)
-const points = ref<PointRecord[]>([])
+const isRotating = ref(false)           // 是否正在自动旋转
+const rotatingPointId = ref<number | null>(null)  // 当前旋转的点 ID
+const points = ref<PointRecord[]>([])   // 已创建的所有点
 let nextId = 1
 
 const form = reactive({
@@ -125,9 +109,12 @@ const form = reactive({
   alt: null as number | null,
 })
 
+/* ───────── 旋转控制 ───────── */
+
 let removeTickListener: (() => void) | null = null
 let cleanupUserInput: (() => void) | null = null
 
+/** 停止自动旋转，恢复相机变换 */
 function stopRotation() {
   isRotating.value = false
   rotatingPointId.value = null
@@ -145,6 +132,8 @@ function stopRotation() {
     v.camera.lookAtTransform(Matrix4.IDENTITY)
   }
 }
+
+/* ───────── 点列表操作 ───────── */
 
 function menuItems(p: PointRecord) {
   const isCurrent = isRotating.value && rotatingPointId.value === p.id
@@ -165,6 +154,7 @@ function toggleRotate(p: PointRecord) {
   const v = toRaw(cesiumStore.viewer)
   if (!v || v.isDestroyed()) return
 
+  // 如果已旋转该点则停止
   if (isRotating.value && rotatingPointId.value === p.id) {
     stopRotation()
     return
@@ -175,6 +165,47 @@ function toggleRotate(p: PointRecord) {
   if (!pos) return
   startRotation(v, pos, p.id)
 }
+
+/** 删除指定索引的点 */
+function removePoint(index: number) {
+  const p = points.value[index]
+  if (!p) return
+  const v = toRaw(cesiumStore.viewer)
+  if (v && !v.isDestroyed()) {
+    v.entities.remove(p.entity)
+  }
+  points.value.splice(index, 1)
+  stopRotation()
+}
+
+/** 清除所有点 */
+function clearAllPoints() {
+  const v = toRaw(cesiumStore.viewer)
+  if (v && !v.isDestroyed()) {
+    points.value.forEach(p => v.entities.remove(p.entity))
+  }
+  points.value = []
+  stopRotation()
+}
+
+/** 飞行定位到点 */
+function flyToPoint(p: PointRecord) {
+  const v = toRaw(cesiumStore.viewer)
+  if (!v || v.isDestroyed()) return
+  const pos = p.entity.position?.getValue(v.clock.currentTime)
+  if (!pos) return
+  const carto = Cartographic.fromCartesian(pos)
+  v.camera.flyTo({
+    destination: Cartesian3.fromDegrees(
+      CesiumMath.toDegrees(carto.longitude),
+      CesiumMath.toDegrees(carto.latitude),
+      carto.height + 1000,
+    ),
+    duration: 1,
+  })
+}
+
+/* ───────── 创建点位 ───────── */
 
 async function handleCreate() {
   if (form.lng === null || form.lat === null) {
@@ -188,6 +219,7 @@ async function handleCreate() {
   isCreating.value = true
 
   try {
+    // 确定高度：手动输入优先，否则采样地形
     let height: number
     if (form.alt !== null) {
       height = form.alt
@@ -203,6 +235,7 @@ async function handleCreate() {
     const lng = form.lng
     const lat = form.lat
 
+    // 添加 Cesium 实体（红色点 + 坐标标签）
     const entity = v.entities.add({
       position,
       point: {
@@ -229,13 +262,10 @@ async function handleCreate() {
 
     stopRotation()
 
+    // 飞行到新点位
     v.camera.flyTo({
       destination: Cartesian3.fromDegrees(lng, lat, height + 1000),
-      orientation: {
-        heading: CesiumMath.toRadians(0),
-        pitch: CesiumMath.toRadians(-30),
-        roll: 0,
-      },
+      orientation: { heading: CesiumMath.toRadians(0), pitch: CesiumMath.toRadians(-30), roll: 0 },
       duration: 1.5,
       complete: () => {
         if (autoRotate.value) {
@@ -254,43 +284,12 @@ async function handleCreate() {
   }
 }
 
-function removePoint(index: number) {
-  const p = points.value[index]
-  if (!p) return
-  const v = toRaw(cesiumStore.viewer)
-  if (v && !v.isDestroyed()) {
-    v.entities.remove(p.entity)
-  }
-  points.value.splice(index, 1)
-  stopRotation()
-}
+/* ───────── 自动旋转逻辑 ───────── */
 
-function clearAllPoints() {
-  const v = toRaw(cesiumStore.viewer)
-  if (v && !v.isDestroyed()) {
-    points.value.forEach(p => v.entities.remove(p.entity))
-  }
-  points.value = []
-  stopRotation()
-}
-
-function flyToPoint(p: PointRecord) {
-  const v = toRaw(cesiumStore.viewer)
-  if (!v || v.isDestroyed()) return
-  const pos = p.entity.position?.getValue(v.clock.currentTime)
-  if (!pos) return
-  const carto = Cartographic.fromCartesian(pos)
-  const height = carto.height
-  v.camera.flyTo({
-    destination: Cartesian3.fromDegrees(
-      CesiumMath.toDegrees(carto.longitude),
-      CesiumMath.toDegrees(carto.latitude),
-      height + 1000,
-    ),
-    duration: 1,
-  })
-}
-
+/**
+ * 启动围绕指定点的自动旋转
+ * 使用 clock.onTick 每帧更新 heading，同时监听鼠标/滚轮事件停止旋转
+ */
 function startRotation(viewer: Viewer, center: Cartesian3, pointId: number) {
   const pitch = CesiumMath.toRadians(-30)
   const range = 1500
@@ -301,11 +300,13 @@ function startRotation(viewer: Viewer, center: Cartesian3, pointId: number) {
   isRotating.value = true
   rotatingPointId.value = pointId
 
+  // 每帧递增 heading
   removeTickListener = viewer.clock.onTick.addEventListener(() => {
     heading += 0.005
     viewer.camera.lookAt(center, new HeadingPitchRange(heading, pitch, range))
   })
 
+  // 用户交互时停止旋转
   const canvas = viewer.canvas
   const onMouseDown = () => stopRotation()
   const onWheel = () => stopRotation()

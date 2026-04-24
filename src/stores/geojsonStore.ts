@@ -1,3 +1,8 @@
+/* ==============================
+ * GeoJSON Store —— GeoJSON 图层管理
+ * 支持：多图层 CRUD、要素属性查看、显隐切换、定位飞行
+ * ============================== */
+
 import { ref, computed, toRaw } from 'vue'
 import { defineStore } from 'pinia'
 import { GeoJsonDataSource, Color } from 'cesium'
@@ -5,16 +10,13 @@ import { message } from 'ant-design-vue'
 import { useCesiumStore } from './cesiumStore'
 import { hasZCoordinate } from '@/utils/geojson'
 
+/** 自动分配的图层颜色（循环使用） */
 const COLORS = [
-  '#FF4D4F',
-  '#52C41A',
-  '#1890FF',
-  '#FAAD14',
-  '#722ED1',
-  '#13C2C2',
-  '#EB2F96',
-  '#FA541C',
+  '#FF4D4F', '#52C41A', '#1890FF', '#FAAD14',
+  '#722ED1', '#13C2C2', '#EB2F96', '#FA541C',
 ]
+
+/* ───────── 类型 ───────── */
 
 export interface GeoJsonFeature {
   id: string
@@ -32,10 +34,14 @@ export interface GeoJsonLayer {
   features: GeoJsonFeature[]
 }
 
+/* ───────── 帮助函数 ───────── */
+
+/** 按索引取色 */
 function pickColor(index: number) {
   return COLORS[index % COLORS.length]
 }
 
+/** 统一对实体应用颜色（支持 point/polygon/polyline/corridor/rectangle/ellipse） */
 function applyEntityColor(entity: any, colorHex: string) {
   const cesiumColor = Color.fromCssColorString(colorHex)
   if (entity.point) {
@@ -64,6 +70,7 @@ function applyEntityColor(entity: any, colorHex: string) {
   }
 }
 
+/** 提取要素名称（优先使用属性中的 name/title/id） */
 function extractFeatureName(entity: any, index: number) {
   let name = entity.name
   if (!name && entity.properties) {
@@ -73,12 +80,13 @@ function extractFeatureName(entity: any, index: number) {
         entity.properties.title?.getValue?.() ??
         entity.properties.id?.getValue?.()
     } catch {
-      // ignore
+      // 忽略 Cesium 属性异常
     }
   }
   return name || `Feature ${index + 1}`
 }
 
+/** 提取要素的所有自定义属性 */
 function extractFeatureProperties(entity: any): Record<string, any> {
   const result: Record<string, any> = {}
   if (!entity.properties) return result
@@ -94,16 +102,19 @@ function extractFeatureProperties(entity: any): Record<string, any> {
       }
     }
   } catch {
-    // ignore malformed Cesium properties
+    // 忽略属性格式异常
   }
   return result
 }
+
+/* ───────── Store ───────── */
 
 export const useGeoJsonStore = defineStore('geojson', () => {
   const cesiumStore = useCesiumStore()
   const viewer = computed(() => cesiumStore.viewer)
   const layers = ref<GeoJsonLayer[]>([])
 
+  /** 添加图层并飞行到其范围 */
   function addLayer(name: string, dataSource: GeoJsonDataSource, color: string, features: GeoJsonFeature[]) {
     const layer: GeoJsonLayer = {
       id: name,
@@ -120,6 +131,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 移除指定图层（从 Cesium 和列表） */
   function removeLayer(id: string) {
     const _layers = toRaw(layers.value)
     const target = _layers.find((l) => l.id === id)
@@ -138,6 +150,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 飞行定位到图层 */
   function flyToLayer(id: string) {
     const _layers = toRaw(layers.value)
     const target = _layers.find((l) => l.id === id)
@@ -149,6 +162,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 切换图层显隐 */
   function toggleLayerVisibility(id: string) {
     const layer = toRaw(layers.value).find((l) => l.id === id)
     if (layer) {
@@ -157,6 +171,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 飞行定位到单个要素 */
   function flyToFeature(entity: any) {
     const v = toRaw(viewer.value)
     if (v && !v.isDestroyed()) {
@@ -164,16 +179,19 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 解析并加载 GeoJSON 文件 */
   async function loadGeoJson(file: File) {
     try {
       const text = await file.text()
       const json = JSON.parse(text)
+      // 包含 Z 坐标时不 clampToGround，保留原始高度
       const options = hasZCoordinate(json) ? undefined : { clampToGround: true }
       const name = `${file.name}_${Date.now()}`
       const color = pickColor(layers.value.length)
       const dataSource = await GeoJsonDataSource.load(json, options)
       dataSource.name = name
 
+      // 遍历实体，应用颜色并提取要素信息
       const features: GeoJsonFeature[] = []
       const entities = dataSource.entities.values
       entities.forEach((entity: any, idx: number) => {
@@ -188,6 +206,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
         })
       })
 
+      // 添加到 Cesium 和列表
       const v = toRaw(viewer.value)
       if (v && !v.isDestroyed()) {
         v.dataSources.add(dataSource)
@@ -199,7 +218,6 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     } catch (err) {
       message.error(`${file.name} 加载失败`)
       console.error(err)
-    } finally {
     }
   }
 

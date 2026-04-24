@@ -1,3 +1,8 @@
+<!--
+  components/Cesium/SidePanel.vue —— 统一侧边面板
+  玻璃态模糊背景 + 滑入动画，所有工具面板均基于此组件
+  通过插槽 (slot) 嵌入面板内容
+-->
 <template>
   <Transition name="panel">
     <div v-if="visible" class="side-panel">

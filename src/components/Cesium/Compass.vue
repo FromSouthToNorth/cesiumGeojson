@@ -1,6 +1,12 @@
+<!--
+  components/Cesium/Compass.vue —— 可拖拽罗盘
+  通过 requestAnimationFrame 实时同步相机 heading，
+  支持鼠标左右拖拽旋转相机，双击复位至正北俯视
+-->
 <template>
   <div class="compass-container" ref="containerRef">
-    <div class="compass" :style="{ transform: `rotate(${heading}deg)` }" @mousedown.prevent="handleMouseDown"
+    <div class="compass" :style="{ transform: `rotate(${heading}deg)` }"
+      @mousedown.prevent="handleMouseDown"
       @dblclick.prevent="handleDoubleClick">
       <svg viewBox="0 0 100 100" class="compass-svg">
         <circle cx="50" cy="50" r="48" class="compass-circle" stroke-width="2" />
@@ -11,8 +17,7 @@
     </div>
     <div class="compass-indicator" v-if="isDragging">
       <svg viewBox="0 0 24 24" class="drag-icon">
-        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
-          fill="currentColor" />
+        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" fill="currentColor" />
       </svg>
     </div>
   </div>
@@ -25,12 +30,13 @@ import { useCesiumStore } from '@/stores/cesiumStore'
 
 const cesiumStore = useCesiumStore()
 const containerRef = ref<HTMLDivElement | null>(null)
-const heading = ref(0)
-const isDragging = ref(false)
+const heading = ref(0)          // 罗盘旋转角度（deg）
+const isDragging = ref(false)   // 是否正在拖拽
 
-let startX = 0
-let currentX = 0
+let startX = 0     // 拖拽起始鼠标 X
+let currentX = 0   // 拖拽当前鼠标 X
 
+/** 从相机 heading 更新罗盘角度（取反使物理方向对应） */
 function updateHeading() {
   const v = toRaw(cesiumStore.viewer)
   if (!cesiumStore.hasViewer) return
@@ -38,24 +44,21 @@ function updateHeading() {
   heading.value = -headingVal
 }
 
+/** 双击复位：正北俯视 */
 function handleDoubleClick() {
   const v = toRaw(cesiumStore.viewer)
   if (!v) return
-  const camera = v.camera
-  const position = camera.positionWC.clone()
-  const height = camera.positionCartographic.height
+  const position = v.camera.positionWC.clone()
+  const height = v.camera.positionCartographic.height
   v.camera.flyTo({
     destination: position,
-    orientation: {
-      heading: 0,
-      pitch: CesiumMath.toRadians(-90),
-      roll: 0,
-    },
+    orientation: { heading: 0, pitch: CesiumMath.toRadians(-90), roll: 0 },
     maximumHeight: height,
     duration: 0.5,
   })
 }
 
+/** 开始拖拽：注册全局 mouse 事件 */
 function handleMouseDown(e: MouseEvent) {
   e.stopPropagation()
   isDragging.value = true
@@ -66,6 +69,7 @@ function handleMouseDown(e: MouseEvent) {
   document.addEventListener('mouseup', handleMouseUp)
 }
 
+/** 拖拽中：水平偏移量映射为相机 twist */
 function handleMouseMove(e: MouseEvent) {
   if (!isDragging.value) return
   e.stopPropagation()
@@ -76,6 +80,7 @@ function handleMouseMove(e: MouseEvent) {
   updateHeading()
 }
 
+/** 结束拖拽：移除全局事件 */
 function handleMouseUp(e: MouseEvent) {
   e.stopPropagation()
   isDragging.value = false
@@ -85,6 +90,7 @@ function handleMouseUp(e: MouseEvent) {
 
 let animationId: number | null = null
 
+/** 启动 RAF 循环持续同步罗盘角度 */
 function startHeadingUpdate() {
   const update = () => {
     updateHeading()
@@ -169,14 +175,7 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-
-  50% {
-    opacity: 1;
-  }
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 </style>

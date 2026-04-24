@@ -1,3 +1,7 @@
+<!--
+  components/Cesium/CesiumNavigation.vue —— 导航控件
+  右上角悬浮：主题切换、飞行至中国视野、缩放、可拖拽罗盘
+-->
 <template>
   <div class="cesium-navigation">
     <div class="nav-group">
@@ -34,17 +38,14 @@ import { useCesiumStore } from '@/stores/cesiumStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Button, Tooltip } from 'ant-design-vue'
 import {
-  HomeOutlined,
-  MinusOutlined,
-  PlusOutlined,
-  BulbOutlined,
-  BulbFilled,
+  HomeOutlined, MinusOutlined, PlusOutlined, BulbOutlined, BulbFilled,
 } from '@ant-design/icons-vue'
 import Compass from './Compass.vue'
 
 const cesiumStore = useCesiumStore()
 const themeStore = useThemeStore()
 
+/** 飞行至中国范围 (73.5°E–135°E, 18°N–53.5°N) */
 const handleHome = () => {
   const v = toRaw(cesiumStore.viewer)
   if (!v) return
@@ -52,12 +53,14 @@ const handleHome = () => {
   v.camera.flyTo({ destination: chinaRectangle })
 }
 
+/** 缩小（按当前高度的 10%） */
 const handleZoomIn = () => {
   const v = toRaw(cesiumStore.viewer)
   if (!v) return
   v.camera.zoomIn(v.camera.positionCartographic.height * 0.1)
 }
 
+/** 放大（按当前高度的 10%） */
 const handleZoomOut = () => {
   const v = toRaw(cesiumStore.viewer)
   if (!v) return
