@@ -1,6 +1,6 @@
 import { ref, computed, watch, toRaw } from 'vue'
 import { defineStore } from 'pinia'
-import { Cartesian3, ClippingPolygon, ClippingPolygonCollection } from 'cesium'
+import { Cartesian3, Cartographic, Rectangle, Math as CesiumMath, ClippingPolygon, ClippingPolygonCollection } from 'cesium'
 import { useCesiumStore } from './cesiumStore'
 import { isValidViewer, genId } from '@/utils/cesium/clipCommon'
 import { useClipDrawing } from '@/utils/cesium/useClipDrawing'
@@ -176,6 +176,34 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     persistence.save()
   }
 
+  /** 飞行定位到指定裁切区域 */
+  function flyToRegion(id: string) {
+    const v = toRaw(viewer.value)
+    if (!isValidViewer(v)) return
+    const region = regions.value.find((r) => r.id === id)
+    if (!region || region.positions.length < 3) return
+
+    // 计算所有顶点的经纬度范围
+    let minLng = Infinity, maxLng = -Infinity
+    let minLat = Infinity, maxLat = -Infinity
+    region.positions.forEach((pos) => {
+      const carto = Cartographic.fromCartesian(pos)
+      const lng = CesiumMath.toDegrees(carto.longitude)
+      const lat = CesiumMath.toDegrees(carto.latitude)
+      if (lng < minLng) minLng = lng
+      if (lng > maxLng) maxLng = lng
+      if (lat < minLat) minLat = lat
+      if (lat > maxLat) maxLat = lat
+    })
+
+    // 添加边距后飞行
+    const pad = 0.02
+    v.camera.flyTo({
+      destination: Rectangle.fromDegrees(minLng - pad, minLat - pad, maxLng + pad, maxLat + pad),
+      duration: 1.0,
+    })
+  }
+
   /** 清除所有区域 */
   function clearAll() {
     const v = toRaw(viewer.value)
@@ -249,9 +277,11 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     if (v && !v.isDestroyed() && !loadedOnce) {
       loadedOnce = true
       const loaded = persistence.load()
-      if (loaded && loaded.length > 0) {
-        regions.value = loaded
-        const last = loaded[loaded.length - 1]
+      if (loaded) {
+        // 先设 inverse，再设 regions，避免 inverse watcher 时序竞态
+        inverse.value = loaded.inverse
+        regions.value = loaded.regions
+        const last = loaded.regions[loaded.regions.length - 1]
         activeRegionId.value = last.id
         positions.value = last.positions
         syncGlobeClipping()
@@ -295,6 +325,7 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     undoLastVertex: drawing.undoLastVertex,
     // regions
     selectRegion,
+    flyToRegion,
     startEdit,
     clearRegion,
     clearAll,

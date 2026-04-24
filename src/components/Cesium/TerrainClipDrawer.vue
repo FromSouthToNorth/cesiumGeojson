@@ -45,6 +45,7 @@
             <span class="region-dot" />
             <span class="region-name">{{ region.name }}</span>
             <span class="region-count">{{ region.positions.length }} 顶点</span>
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.flyToRegion(region.id)">定位</Button>
             <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)">编辑</Button>
             <Popconfirm title="确认删除该区域？" placement="left" @confirm.stop="store.clearRegion(region.id)">
               <Button size="small" type="link" danger class="region-act-btn" @click.stop>删除</Button>

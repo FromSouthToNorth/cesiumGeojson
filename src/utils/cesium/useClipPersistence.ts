@@ -11,6 +11,10 @@ import type { ClipRegion, PersistedData } from './clipCommon'
  * 序列化方式：
  *   Cartesian3 无法直接 JSON.stringify，转存为 [x, y, z] 数字数组。
  *   反序列化时再重建 Cartesian3 对象。
+ *
+ * 重要设计原则：
+ *   save() 从外部 ref 读取，load() 返回数据而非直接写入 ref，
+ *   由调用方（store）控制赋值顺序，避免 Vue reactivity 时序竞态。
  */
 
 const STORAGE_KEY = 'cesium-terrain-clip'
@@ -37,26 +41,25 @@ export function useClipPersistence(regions: Ref<ClipRegion[]>, inverse: Ref<bool
   }
 
   /**
-   * 从 localStorage 加载已保存的区域数据
-   * 返回 ClipRegion[] 或 null，由调用方（store）负责赋值到 regions ref
-   * 同时恢复 inverse 状态
+   * 从 localStorage 加载已保存的区域数据与 inverse 状态
+   * 返回 { regions, inverse } 或 null，由调用方（store）负责赋值，
+   * 避免在此处直接写入 inverse ref 导致 watcher 时序问题。
    */
-  function load(): ClipRegion[] | null {
+  function load(): { regions: ClipRegion[]; inverse: boolean } | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) return null
       const data: PersistedData = JSON.parse(raw)
       if (!data.regions?.length) return null
 
-      // 恢复 inverse 状态
-      inverse.value = data.inverse ?? false
-
-      // 反序列化：数字数组 → Cartesian3
-      return data.regions.map((r) => ({
-        id: r.id,
-        name: r.name ?? '区域',
-        positions: r.positions.map(([x, y, z]) => new Cartesian3(x, y, z)),
-      }))
+      return {
+        inverse: data.inverse ?? false,
+        regions: data.regions.map((r) => ({
+          id: r.id,
+          name: r.name ?? '区域',
+          positions: r.positions.map(([x, y, z]) => new Cartesian3(x, y, z)),
+        })),
+      }
     } catch {
       /* 数据损坏时静默忽略 */
       return null
