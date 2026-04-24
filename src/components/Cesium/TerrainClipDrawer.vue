@@ -1,8 +1,5 @@
 <template>
-  <Button class="drawer-trigger clip-trigger" type="primary" @click="drawerVisible = true">
-    地形裁切
-  </Button>
-  <Drawer v-model:open="drawerVisible" title="地形裁切" placement="left" :width="320" :mask="false">
+  <SidePanel :visible="visible" title="地形裁切" @update:visible="emit('update:visible', $event)">
     <Space direction="vertical" style="width: 100%">
       <div>
         <span>Inverse（反选）</span>
@@ -24,33 +21,38 @@
       >
         清除裁剪
       </Button>
-      <div v-if="terrainClipStore.isDrawing" style="color: #999">
+      <div v-if="terrainClipStore.isDrawing" class="drawing-tip">
         左键点击绘制顶点，双击左键撤销，右键点击结束绘制
       </div>
-      <div v-if="terrainClipStore.isDrawing" style="color: #666; font-size: 12px">
+      <div v-if="terrainClipStore.isDrawing" class="drawing-count">
         已绘制 {{ terrainClipStore.positions.length }} 个顶点
       </div>
     </Space>
-  </Drawer>
+  </SidePanel>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useTerrainClipStore } from '@/stores/terrainClipStore'
-import { Button, Drawer, Space, Switch } from 'ant-design-vue'
+import { Button, Space, Switch } from 'ant-design-vue'
+import SidePanel from './SidePanel.vue'
+
+defineOptions({ name: 'TerrainClipDrawer' })
+
+defineProps<{ visible: boolean }>()
+const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
 const terrainClipStore = useTerrainClipStore()
-const drawerVisible = ref(false)
 </script>
 
 <style scoped>
-.drawer-trigger {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 10;
+.drawing-tip {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }
-.clip-trigger {
-  top: 60px;
+
+.drawing-count {
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 </style>

@@ -3,10 +3,10 @@
     <div class="compass" :style="{ transform: `rotate(${heading}deg)` }" @mousedown.prevent="handleMouseDown"
       @dblclick.prevent="handleDoubleClick">
       <svg viewBox="0 0 100 100" class="compass-svg">
-        <circle cx="50" cy="50" r="48" fill="rgba(50,50,50,0.8)" stroke="rgba(255,255,255,0.2)" stroke-width="2" />
-        <polygon points="50,10 55,50 50,45 45,50" fill="#ff4444" />
-        <polygon points="50,90 55,50 50,55 45,50" fill="#ffffff" />
-        <text x="50" y="8" text-anchor="middle" fill="#ff4444" font-size="8" font-weight="bold">N</text>
+        <circle cx="50" cy="50" r="48" class="compass-circle" stroke-width="2" />
+        <polygon points="50,10 55,50 50,45 45,50" class="compass-north" />
+        <polygon points="50,90 55,50 50,55 45,50" class="compass-south" />
+        <text x="50" y="8" text-anchor="middle" class="compass-label" font-size="8" font-weight="bold">N</text>
       </svg>
     </div>
     <div class="compass-indicator" v-if="isDragging">
@@ -47,8 +47,8 @@ function handleDoubleClick() {
   v.camera.flyTo({
     destination: position,
     orientation: {
-      heading: 0,                            // 正北
-      pitch: CesiumMath.toRadians(-90),      // 水平视角
+      heading: 0,
+      pitch: CesiumMath.toRadians(-90),
       roll: 0,
     },
     maximumHeight: height,
@@ -134,6 +134,23 @@ onUnmounted(() => {
   height: 100%;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   pointer-events: none;
+}
+
+.compass-circle {
+  fill: var(--compass-bg);
+  stroke: var(--compass-border);
+}
+
+.compass-north {
+  fill: var(--compass-north);
+}
+
+.compass-south {
+  fill: var(--surface-text);
+}
+
+.compass-label {
+  fill: var(--compass-north);
 }
 
 .compass-indicator {

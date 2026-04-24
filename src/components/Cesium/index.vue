@@ -1,7 +1,6 @@
 <template>
   <div ref="cesiumContainer" class="cesium-container">
-    <GeoJsonDrawer />
-    <TerrainClipDrawer />
+    <Toolbox />
     <CesiumNavigation />
   </div>
 </template>
@@ -11,8 +10,7 @@ import { onMounted, ref } from 'vue'
 import type { Viewer } from 'cesium'
 import { createViewer } from '@/utils/cesium'
 import { useCesiumStore } from '@/stores/cesiumStore'
-import GeoJsonDrawer from './GeoJsonDrawer.vue'
-import TerrainClipDrawer from './TerrainClipDrawer.vue'
+import Toolbox from './Toolbox.vue'
 import CesiumNavigation from './CesiumNavigation.vue'
 
 const { setViewer } = useCesiumStore()

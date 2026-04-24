@@ -1,161 +1,156 @@
 <template>
-  <Button class="drawer-trigger" type="primary" @click="drawerVisible = true">
-    GeoJSON
-  </Button>
-  <Drawer v-model:open="drawerVisible" title="GeoJSON 管理" placement="left" :width="420" :mask="false">
-    <div class="drawer-body">
-      <Upload :before-upload="handleUpload" accept=".geojson,.json" :show-upload-list="false">
-        <Button type="dashed" block :loading="isUploading">
-          <UploadOutlined />
-          {{ isUploading ? '正在解析…' : '上传 GeoJSON' }}
-        </Button>
-      </Upload>
+  <SidePanel :visible="visible" title="GeoJSON 管理" @update:visible="emit('update:visible', $event)">
+    <Upload :before-upload="handleUpload" accept=".geojson,.json" :show-upload-list="false">
+      <Button type="dashed" block :loading="isUploading">
+        <UploadOutlined />
+        {{ isUploading ? '正在解析…' : '上传 GeoJSON' }}
+      </Button>
+    </Upload>
 
-      <div v-if="geoJsonStore.layers.length" class="layers-section">
-        <div class="layers-toolbar">
-          <span class="layers-count">共 {{ geoJsonStore.layers.length }} 个图层</span>
-          <InputSearch
-            v-model:value="searchQuery"
-            placeholder="搜索图层名称"
-            allow-clear
-            size="small"
-            class="layer-search"
-          />
-        </div>
+    <div v-if="geoJsonStore.layers.length" class="layers-section">
+      <div class="layers-toolbar">
+        <span class="layers-count">共 {{ geoJsonStore.layers.length }} 个图层</span>
+        <InputSearch
+          v-model:value="searchQuery"
+          placeholder="搜索图层名称"
+          allow-clear
+          size="small"
+          class="layer-search"
+        />
+      </div>
 
-        <div ref="scrollRef" class="layers-scroll">
-          <Collapse v-model:activeKey="activeKeys" ghost destroy-inactive-panel>
-            <CollapsePanel
-              v-for="layer in filteredLayers"
-              :key="layer.id"
-              class="layer-panel"
-            >
-              <template #header>
-                <div class="panel-header">
-                  <div class="layer-info" :class="{ 'is-hidden': !layer.show }">
-                    <span class="color-badge" :style="{ backgroundColor: layer.color }">
-                      {{ layer.features.length }}
-                    </span>
-                    <span class="layer-name" :title="layer.name">{{ layer.name }}</span>
-                  </div>
-                  <div class="layer-actions">
-                    <Tooltip title="定位图层">
-                      <Button
-                        type="text"
-                        size="small"
-                        class="action-btn"
-                        aria-label="定位图层"
-                        @click.stop="geoJsonStore.flyToLayer(layer.id)"
-                      >
-                        <EnvironmentOutlined />
-                      </Button>
-                    </Tooltip>
-                    <Tooltip :title="layer.show ? '隐藏图层' : '显示图层'">
-                      <Button
-                        type="text"
-                        size="small"
-                        class="action-btn"
-                        :aria-label="layer.show ? '隐藏图层' : '显示图层'"
-                        @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)"
-                      >
-                        <EyeOutlined v-if="layer.show" />
-                        <EyeInvisibleOutlined v-else />
-                      </Button>
-                    </Tooltip>
-                    <Popconfirm
-                      title="确认删除该图层？"
-                      placement="topRight"
-                      @confirm.stop="geoJsonStore.removeLayer(layer.id)"
+      <div ref="scrollRef" class="layers-scroll">
+        <Collapse v-model:activeKey="activeKeys" ghost destroy-inactive-panel>
+          <CollapsePanel
+            v-for="layer in filteredLayers"
+            :key="layer.id"
+            class="layer-panel"
+          >
+            <template #header>
+              <div class="panel-header">
+                <div class="layer-info" :class="{ 'is-hidden': !layer.show }">
+                  <span class="color-badge" :style="{ backgroundColor: layer.color }">
+                    {{ layer.features.length }}
+                  </span>
+                  <span class="layer-name" :title="layer.name">{{ layer.name }}</span>
+                </div>
+                <div class="layer-actions">
+                  <Tooltip title="定位图层">
+                    <Button
+                      type="text"
+                      size="small"
+                      class="action-btn"
+                      aria-label="定位图层"
+                      @click.stop="geoJsonStore.flyToLayer(layer.id)"
                     >
-                      <Tooltip title="删除图层">
+                      <EnvironmentOutlined />
+                    </Button>
+                  </Tooltip>
+                  <Tooltip :title="layer.show ? '隐藏图层' : '显示图层'">
+                    <Button
+                      type="text"
+                      size="small"
+                      class="action-btn"
+                      :aria-label="layer.show ? '隐藏图层' : '显示图层'"
+                      @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)"
+                    >
+                      <EyeOutlined v-if="layer.show" />
+                      <EyeInvisibleOutlined v-else />
+                    </Button>
+                  </Tooltip>
+                  <Popconfirm
+                    title="确认删除该图层？"
+                    placement="topRight"
+                    @confirm.stop="geoJsonStore.removeLayer(layer.id)"
+                  >
+                    <Tooltip title="删除图层">
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        class="action-btn"
+                        aria-label="删除图层"
+                        @click.stop
+                      >
+                        <DeleteOutlined />
+                      </Button>
+                    </Tooltip>
+                  </Popconfirm>
+                </div>
+              </div>
+            </template>
+
+            <List
+              :data-source="layer.features"
+              size="small"
+              :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }"
+            >
+              <template #renderItem="{ item }">
+                <div class="feature-wrapper">
+                  <ListItem class="feature-item" @click="geoJsonStore.flyToFeature(item.entity)">
+                    <div class="feature-left">
+                      <span class="feature-dot" :style="{ backgroundColor: layer.color }"></span>
+                      <span class="feature-name" :title="item.name">{{ item.name }}</span>
+                    </div>
+                    <div class="feature-actions">
+                      <Tooltip title="查看属性">
                         <Button
                           type="text"
-                          danger
                           size="small"
                           class="action-btn"
-                          aria-label="删除图层"
-                          @click.stop
+                          aria-label="查看属性"
+                          @click.stop="toggleFeatureProperties(item.id)"
                         >
-                          <DeleteOutlined />
+                          <InfoCircleOutlined />
                         </Button>
                       </Tooltip>
-                    </Popconfirm>
+                      <Tooltip title="定位要素">
+                        <Button
+                          type="text"
+                          size="small"
+                          class="action-btn"
+                          aria-label="定位要素"
+                          @click.stop="geoJsonStore.flyToFeature(item.entity)"
+                        >
+                          <AimOutlined />
+                        </Button>
+                      </Tooltip>
+                    </div>
+                  </ListItem>
+
+                  <div
+                    v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
+                    class="feature-properties"
+                  >
+                    <Descriptions bordered :column="1" size="small">
+                      <DescriptionsItem
+                        v-for="(val, key) in item.properties"
+                        :key="key"
+                        :label="String(key)"
+                      >
+                        <span class="property-value" :title="String(val)">{{ val }}</span>
+                      </DescriptionsItem>
+                    </Descriptions>
+                  </div>
+
+                  <div
+                    v-else-if="expandedFeatureIds.has(item.id)"
+                    class="feature-properties-empty"
+                  >
+                    <Empty description="暂无属性" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
                   </div>
                 </div>
               </template>
+            </List>
+          </CollapsePanel>
+        </Collapse>
 
-              <List
-                :data-source="layer.features"
-                size="small"
-                :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }"
-              >
-                <template #renderItem="{ item }">
-                  <div class="feature-wrapper">
-                    <ListItem class="feature-item" @click="geoJsonStore.flyToFeature(item.entity)">
-                      <div class="feature-left">
-                        <span class="feature-dot" :style="{ backgroundColor: layer.color }"></span>
-                        <span class="feature-name" :title="item.name">{{ item.name }}</span>
-                      </div>
-                      <div class="feature-actions">
-                        <Tooltip title="查看属性">
-                          <Button
-                            type="text"
-                            size="small"
-                            class="action-btn"
-                            aria-label="查看属性"
-                            @click.stop="toggleFeatureProperties(item.id)"
-                          >
-                            <InfoCircleOutlined />
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title="定位要素">
-                          <Button
-                            type="text"
-                            size="small"
-                            class="action-btn"
-                            aria-label="定位要素"
-                            @click.stop="geoJsonStore.flyToFeature(item.entity)"
-                          >
-                            <AimOutlined />
-                          </Button>
-                        </Tooltip>
-                      </div>
-                    </ListItem>
-
-                    <div
-                      v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
-                      class="feature-properties"
-                    >
-                      <Descriptions bordered :column="1" size="small">
-                        <DescriptionsItem
-                          v-for="(val, key) in item.properties"
-                          :key="key"
-                          :label="String(key)"
-                        >
-                          <span class="property-value" :title="String(val)">{{ val }}</span>
-                        </DescriptionsItem>
-                      </Descriptions>
-                    </div>
-
-                    <div
-                      v-else-if="expandedFeatureIds.has(item.id)"
-                      class="feature-properties-empty"
-                    >
-                      <Empty description="暂无属性" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
-                    </div>
-                  </div>
-                </template>
-              </List>
-            </CollapsePanel>
-          </Collapse>
-
-          <Empty v-if="!filteredLayers.length" description="未找到匹配的图层" class="filter-empty" />
-        </div>
+        <Empty v-if="!filteredLayers.length" description="未找到匹配的图层" class="filter-empty" />
       </div>
-
-      <Empty v-else description="暂无 GeoJSON 数据" />
     </div>
-  </Drawer>
+
+    <Empty v-else description="暂无 GeoJSON 数据" />
+  </SidePanel>
 </template>
 
 <script setup lang="ts">
@@ -163,7 +158,6 @@ import { ref, computed, watch, nextTick, useTemplateRef } from 'vue'
 import { useGeoJsonStore } from '@/stores/geojsonStore'
 import {
   Button,
-  Drawer,
   Upload,
   List,
   Collapse,
@@ -183,15 +177,18 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
 } from '@ant-design/icons-vue'
+import SidePanel from './SidePanel.vue'
 
 defineOptions({ name: 'GeoJsonDrawer' })
+
+const props = defineProps<{ visible: boolean }>()
+const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
 
 const InputSearch = Input.Search
 const ListItem = List.Item
 const DescriptionsItem = Descriptions.Item
 
 const geoJsonStore = useGeoJsonStore()
-const drawerVisible = ref(false)
 const activeKeys = ref<string[]>([])
 const searchQuery = ref('')
 const isUploading = ref(false)
@@ -240,20 +237,6 @@ const handleUpload = async (file: File) => {
 </script>
 
 <style scoped>
-.drawer-trigger {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 10;
-}
-
-.drawer-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-}
-
 .layers-section {
   display: flex;
   flex-direction: column;
@@ -272,7 +255,7 @@ const handleUpload = async (file: File) => {
 
 .layers-count {
   font-size: 13px;
-  color: #8c8c8c;
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 
@@ -284,7 +267,7 @@ const handleUpload = async (file: File) => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 8px;
 }
@@ -292,7 +275,7 @@ const handleUpload = async (file: File) => {
 .layer-panel {
   border-radius: 6px;
   overflow: hidden;
-  background-color: #fafafa;
+  background: var(--panel-surface);
   margin-bottom: 8px;
 }
 
@@ -343,7 +326,7 @@ const handleUpload = async (file: File) => {
   white-space: nowrap;
   font-weight: 500;
   font-size: 14px;
-  color: #262626;
+  color: var(--color-text);
 }
 
 .layer-actions {
@@ -374,7 +357,7 @@ const handleUpload = async (file: File) => {
 }
 
 .feature-item:hover {
-  background-color: #f0f0f0;
+  background: var(--panel-hover);
 }
 
 .feature-wrapper {
@@ -391,7 +374,7 @@ const handleUpload = async (file: File) => {
 
 .feature-properties {
   padding: 0 8px 8px;
-  background-color: #fafafa;
+  background: var(--panel-surface);
 }
 
 .feature-properties :deep(.ant-descriptions-bordered .ant-descriptions-item-label) {
@@ -412,7 +395,7 @@ const handleUpload = async (file: File) => {
 
 .feature-properties-empty {
   padding: 8px;
-  background-color: #fafafa;
+  background: var(--panel-surface);
 }
 
 .feature-left {
@@ -438,7 +421,7 @@ const handleUpload = async (file: File) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: #595959;
+  color: var(--color-text-secondary);
 }
 
 .filter-empty {

@@ -1,6 +1,12 @@
 <template>
   <div class="cesium-navigation">
     <div class="nav-group">
+      <Tooltip title="切换主题" placement="left">
+        <Button class="nav-btn" @click="themeStore.toggle">
+          <BulbOutlined v-if="themeStore.isDark" />
+          <BulbFilled v-else />
+        </Button>
+      </Tooltip>
       <Tooltip title="飞行至初始视野" placement="left">
         <Button class="nav-btn" @click="handleHome">
           <HomeOutlined />
@@ -25,11 +31,19 @@
 import { Rectangle } from 'cesium'
 import { toRaw } from 'vue'
 import { useCesiumStore } from '@/stores/cesiumStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { Button, Tooltip } from 'ant-design-vue'
-import { HomeOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import {
+  HomeOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  BulbOutlined,
+  BulbFilled,
+} from '@ant-design/icons-vue'
 import Compass from './Compass.vue'
 
 const cesiumStore = useCesiumStore()
+const themeStore = useThemeStore()
 
 const handleHome = () => {
   const v = toRaw(cesiumStore.viewer)
@@ -67,6 +81,11 @@ const handleZoomOut = () => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  background: var(--surface-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  padding: 6px;
 }
 
 .nav-btn {
@@ -76,16 +95,21 @@ const handleZoomOut = () => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  background: rgba(50, 50, 50, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: #fff;
+  background: var(--nav-btn-bg);
+  border: 1px solid var(--nav-btn-border);
+  border-radius: 6px;
+  color: var(--nav-btn-text);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .nav-btn:hover {
-  background: rgba(70, 70, 70, 0.9);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: var(--nav-btn-hover-bg);
+  border-color: var(--nav-btn-hover-border);
+  color: var(--nav-btn-hover-text);
+}
+
+.nav-btn:active {
+  background: var(--nav-btn-active-bg);
 }
 </style>
