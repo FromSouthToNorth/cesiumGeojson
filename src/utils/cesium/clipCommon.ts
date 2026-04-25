@@ -1,5 +1,5 @@
-import { Cartesian3, Cartesian2 } from 'cesium'
-import type { Viewer } from 'cesium'
+import { Cartesian3, Cartesian2 } from 'cesium';
+import type { Viewer } from 'cesium';
 
 /* ==============================
  * 共享类型定义
@@ -11,10 +11,10 @@ import type { Viewer } from 'cesium'
  * 因此对 positions 的增删改会同步反映到 region 本身。
  */
 export interface ClipRegion {
-  id: string
-  name: string
+  id: string;
+  name: string;
   /** 顶点坐标数组，按顺序构成一个闭合多边形 */
-  positions: Cartesian3[]
+  positions: Cartesian3[];
 }
 
 /**
@@ -22,8 +22,8 @@ export interface ClipRegion {
  * Cartesian3 序列化为 [x, y, z] 数字数组
  */
 export interface PersistedData {
-  regions: { id: string; name: string; positions: number[][] }[]
-  inverse: boolean
+  regions: { id: string; name: string; positions: number[][] }[];
+  inverse: boolean;
 }
 
 /* ==============================
@@ -32,7 +32,7 @@ export interface PersistedData {
 
 /** 生成短唯一 ID（基于时间戳 + 随机数） */
 export function genId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 /**
@@ -40,7 +40,7 @@ export function genId(): string {
  * 类型守卫 (`v is Viewer`) 让 TS 在通过检查后自动收窄类型，消除 null 判断
  */
 export function isValidViewer(v: any): v is Viewer {
-  return v && !v.isDestroyed()
+  return v && !v.isDestroyed();
 }
 
 /**
@@ -49,7 +49,7 @@ export function isValidViewer(v: any): v is Viewer {
  * 失败时回退到 ellipsoid pick（获取椭球面交点）。
  */
 export function pickGlobe(v: Viewer, pos: Cartesian2): Cartesian3 | null {
-  const ray = v.camera.getPickRay(pos)
-  const cartesian = ray ? v.scene.globe.pick(ray, v.scene) : undefined
-  return cartesian ?? v.camera.pickEllipsoid(pos, v.scene.globe.ellipsoid) ?? null
+  const ray = v.camera.getPickRay(pos);
+  const cartesian = ray ? v.scene.globe.pick(ray, v.scene) : undefined;
+  return cartesian ?? v.camera.pickEllipsoid(pos, v.scene.globe.ellipsoid) ?? null;
 }

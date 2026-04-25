@@ -25,12 +25,8 @@
       </div>
 
       <div ref="scrollRef" class="layers-scroll">
-        <Collapse v-model:activeKey="activeKeys" ghost destroy-inactive-panel>
-          <CollapsePanel
-            v-for="layer in filteredLayers"
-            :key="layer.id"
-            class="layer-panel"
-          >
+        <Collapse v-model:active-key="activeKeys" ghost destroy-inactive-panel>
+          <CollapsePanel v-for="layer in filteredLayers" :key="layer.id" class="layer-panel">
             <template #header>
               <div class="panel-header">
                 <div class="layer-info" :class="{ 'is-hidden': !layer.show }">
@@ -46,12 +42,21 @@
                     </Button>
                   </Tooltip>
                   <Tooltip :title="layer.show ? '隐藏图层' : '显示图层'">
-                    <Button type="text" size="small" class="action-btn" @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)">
+                    <Button
+                      type="text"
+                      size="small"
+                      class="action-btn"
+                      @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)"
+                    >
                       <EyeOutlined v-if="layer.show" />
                       <EyeInvisibleOutlined v-else />
                     </Button>
                   </Tooltip>
-                  <Popconfirm title="确认删除该图层？" placement="topRight" @confirm.stop="geoJsonStore.removeLayer(layer.id)">
+                  <Popconfirm
+                    title="确认删除该图层？"
+                    placement="topRight"
+                    @confirm.stop="geoJsonStore.removeLayer(layer.id)"
+                  >
                     <Tooltip title="删除图层">
                       <Button type="text" danger size="small" class="action-btn" @click.stop>
                         <DeleteOutlined />
@@ -62,7 +67,11 @@
               </div>
             </template>
 
-            <List :data-source="layer.features" size="small" :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }">
+            <List
+              :data-source="layer.features"
+              size="small"
+              :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }"
+            >
               <template #renderItem="{ item }">
                 <div class="feature-wrapper">
                   <ListItem class="feature-item" @click="geoJsonStore.flyToFeature(item.entity)">
@@ -72,19 +81,32 @@
                     </div>
                     <div class="feature-actions">
                       <Tooltip title="查看属性">
-                        <Button type="text" size="small" class="action-btn" @click.stop="toggleFeatureProperties(item.id)">
+                        <Button
+                          type="text"
+                          size="small"
+                          class="action-btn"
+                          @click.stop="toggleFeatureProperties(item.id)"
+                        >
                           <InfoCircleOutlined />
                         </Button>
                       </Tooltip>
                       <Tooltip title="定位要素">
-                        <Button type="text" size="small" class="action-btn" @click.stop="geoJsonStore.flyToFeature(item.entity)">
+                        <Button
+                          type="text"
+                          size="small"
+                          class="action-btn"
+                          @click.stop="geoJsonStore.flyToFeature(item.entity)"
+                        >
                           <AimOutlined />
                         </Button>
                       </Tooltip>
                     </div>
                   </ListItem>
 
-                  <div v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length" class="feature-properties">
+                  <div
+                    v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
+                    class="feature-properties"
+                  >
                     <Descriptions bordered :column="1" size="small">
                       <DescriptionsItem v-for="(val, key) in item.properties" :key="key" :label="String(key)">
                         <span class="property-value" :title="String(val)">{{ val }}</span>
@@ -109,95 +131,108 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, useTemplateRef } from 'vue'
-import { useGeoJsonStore } from '@/stores/geojsonStore'
+import { ref, computed, watch, nextTick, useTemplateRef } from 'vue';
+import { useGeoJsonStore } from '@/stores/geojsonStore';
 import {
-  Button, Upload, List, Collapse, CollapsePanel,
-  Tooltip, Popconfirm, Empty, Input, Descriptions,
-} from 'ant-design-vue'
+  Button,
+  Upload,
+  List,
+  Collapse,
+  CollapsePanel,
+  Tooltip,
+  Popconfirm,
+  Empty,
+  Input,
+  Descriptions,
+} from 'ant-design-vue';
 import {
-  UploadOutlined, EnvironmentOutlined, DeleteOutlined,
-  AimOutlined, InfoCircleOutlined, EyeOutlined, EyeInvisibleOutlined,
-} from '@ant-design/icons-vue'
-import SidePanel from './SidePanel.vue'
+  UploadOutlined,
+  EnvironmentOutlined,
+  DeleteOutlined,
+  AimOutlined,
+  InfoCircleOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+} from '@ant-design/icons-vue';
+import SidePanel from './SidePanel.vue';
 
-defineOptions({ name: 'GeoJsonDrawer' })
+defineOptions({ name: 'GeoJsonDrawer' });
 
-const props = defineProps<{ visible: boolean }>()
-const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
+defineProps<{ visible: boolean }>();
+const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 
-const InputSearch = Input.Search
-const ListItem = List.Item
-const DescriptionsItem = Descriptions.Item
+const InputSearch = Input.Search;
+const ListItem = List.Item;
+const DescriptionsItem = Descriptions.Item;
 
-const geoJsonStore = useGeoJsonStore()
-const activeKeys = ref<string[]>([])        // 展开的 CollapsePanel key
-const searchQuery = ref('')                  // 搜索关键词
-const isUploading = ref(false)
-const scrollRef = useTemplateRef<HTMLDivElement>('scrollRef')
-const expandedFeatureIds = ref<Set<string>>(new Set())  // 已展开属性的要素
+const geoJsonStore = useGeoJsonStore();
+const activeKeys = ref<string[]>([]); // 展开的 CollapsePanel key
+const searchQuery = ref(''); // 搜索关键词
+const isUploading = ref(false);
+const scrollRef = useTemplateRef<HTMLDivElement>('scrollRef');
+const expandedFeatureIds = ref<Set<string>>(new Set()); // 已展开属性的要素
 
 /** 切换要素属性的展开/收起 */
 function toggleFeatureProperties(featureId: string) {
-  const next = new Set(expandedFeatureIds.value)
-  if (next.has(featureId)) next.delete(featureId)
-  else next.add(featureId)
-  expandedFeatureIds.value = next
+  const next = new Set(expandedFeatureIds.value);
+  if (next.has(featureId)) next.delete(featureId);
+  else next.add(featureId);
+  expandedFeatureIds.value = next;
 }
 
 /** 根据搜索词过滤图层列表 */
 const filteredLayers = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return geoJsonStore.layers
-  return geoJsonStore.layers.filter(layer => layer.name.toLowerCase().includes(query))
-})
+  const query = searchQuery.value.trim().toLowerCase();
+  if (!query) return geoJsonStore.layers;
+  return geoJsonStore.layers.filter((layer) => layer.name.toLowerCase().includes(query));
+});
 
 /** 新图层添加时自动展开并滚动到顶部 */
 watch(
   () => geoJsonStore.layers.length,
   async (newLength, oldLength) => {
     if (newLength > (oldLength ?? 0)) {
-      const newestLayer = geoJsonStore.layers[geoJsonStore.layers.length - 1]
+      const newestLayer = geoJsonStore.layers[geoJsonStore.layers.length - 1];
       if (newestLayer && !activeKeys.value.includes(newestLayer.id)) {
-        activeKeys.value = [...activeKeys.value, newestLayer.id]
+        activeKeys.value = [...activeKeys.value, newestLayer.id];
       }
-      await nextTick()
-      scrollRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+      await nextTick();
+      scrollRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }
-)
+  },
+);
 
 const handleUpload = async (file: File) => {
-  isUploading.value = true
+  isUploading.value = true;
   try {
-    await geoJsonStore.loadGeoJson(file)
+    await geoJsonStore.loadGeoJson(file);
   } finally {
-    isUploading.value = false
+    isUploading.value = false;
   }
-  return false   // 阻止默认上传行为
-}
+  return false; // 阻止默认上传行为
+};
 </script>
 
 <style scoped>
 .layers-section {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 8px;
-  flex: 1;
   min-height: 0;
 }
 
 .layers-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-shrink: 0;
 }
 
 .layers-count {
-  font-size: 13px;
   color: var(--color-text-secondary);
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -209,16 +244,16 @@ const handleUpload = async (file: File) => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding: 8px;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
-  padding: 8px;
 }
 
 .layer-panel {
-  border-radius: 6px;
   overflow: hidden;
-  background: var(--panel-surface);
   margin-bottom: 8px;
+  border-radius: 6px;
+  background: var(--panel-surface);
 }
 
 .layer-panel:last-child {
@@ -229,15 +264,15 @@ const handleUpload = async (file: File) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
   gap: 8px;
+  width: 100%;
 }
 
 .layer-info {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 8px;
-  flex: 1;
   min-width: 0;
   transition: opacity 0.2s;
 }
@@ -248,6 +283,7 @@ const handleUpload = async (file: File) => {
 
 .color-badge {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   min-width: 24px;
@@ -257,25 +293,24 @@ const handleUpload = async (file: File) => {
   color: #fff;
   font-size: 12px;
   font-weight: 600;
-  flex-shrink: 0;
 }
 
 .layer-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
-  font-size: 14px;
-  color: var(--color-text);
 }
 
 .layer-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 2px;
-  flex-shrink: 0;
 }
 
 .action-btn {
@@ -290,12 +325,12 @@ const handleUpload = async (file: File) => {
 
 .feature-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   padding: 8px;
   border-radius: 4px;
-  transition: background-color 0.2s;
   cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .feature-item:hover {
@@ -303,15 +338,15 @@ const handleUpload = async (file: File) => {
 }
 
 .feature-wrapper {
-  border-radius: 4px;
   overflow: hidden;
+  border-radius: 4px;
 }
 
 .feature-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 2px;
-  flex-shrink: 0;
 }
 
 .feature-properties {
@@ -330,9 +365,9 @@ const handleUpload = async (file: File) => {
 
 .property-value {
   display: -webkit-box;
+  overflow: hidden;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .feature-properties-empty {
@@ -342,28 +377,28 @@ const handleUpload = async (file: File) => {
 
 .feature-left {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 8px;
-  flex: 1;
   min-width: 0;
   margin-right: 8px;
 }
 
 .feature-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  flex-shrink: 0;
 }
 
 .feature-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  color: var(--color-text-secondary);
 }
 
 .filter-empty {
@@ -371,8 +406,8 @@ const handleUpload = async (file: File) => {
 }
 
 :deep(.ant-collapse-header) {
-  padding: 10px 12px !important;
   align-items: center !important;
+  padding: 10px 12px !important;
 }
 
 :deep(.ant-collapse-header-text) {
@@ -386,8 +421,8 @@ const handleUpload = async (file: File) => {
 }
 
 :deep(.ant-list-item) {
-  border-bottom: none !important;
   padding: 0 !important;
+  border-bottom: none !important;
 }
 
 :deep(.ant-list-pagination) {

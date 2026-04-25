@@ -3,7 +3,7 @@
 :root {
   /* Surfaces */
   --surface-bg: rgba(255, 255, 255, 0.88);
-  --surface-border: rgba(0, 0, 0, 0.10);
+  --surface-border: rgba(0, 0, 0, 0.1);
   --surface-text: rgba(0, 0, 0, 0.75);
   --surface-text-muted: rgba(0, 0, 0, 0.35);
   --surface-hover: rgba(0, 0, 0, 0.06);
@@ -16,11 +16,11 @@
   --nav-btn-hover-bg: rgba(0, 0, 0, 0.06);
   --nav-btn-hover-border: rgba(0, 0, 0, 0.15);
   --nav-btn-hover-text: rgba(0, 0, 0, 0.95);
-  --nav-btn-active-bg: rgba(0, 0, 0, 0.10);
+  --nav-btn-active-bg: rgba(0, 0, 0, 0.1);
 
   /* Compass */
   --compass-bg: rgba(255, 255, 255, 0.88);
-  --compass-border: rgba(0, 0, 0, 0.10);
+  --compass-border: rgba(0, 0, 0, 0.1);
   --compass-north: #ff4444;
 
   /* Panel internal surfaces */
@@ -40,17 +40,17 @@
   --surface-border: rgba(255, 255, 255, 0.12);
   --surface-text: rgba(255, 255, 255, 0.75);
   --surface-text-muted: rgba(255, 255, 255, 0.35);
-  --surface-hover: rgba(255, 255, 255, 0.10);
-  --surface-header-border: rgba(255, 255, 255, 0.10);
+  --surface-hover: rgba(255, 255, 255, 0.1);
+  --surface-header-border: rgba(255, 255, 255, 0.1);
 
   --panel-surface: rgba(255, 255, 255, 0.04);
   --panel-hover: rgba(255, 255, 255, 0.08);
   --panel-border: rgba(255, 255, 255, 0.06);
 
   --nav-btn-bg: transparent;
-  --nav-btn-border: rgba(255, 255, 255, 0.10);
+  --nav-btn-border: rgba(255, 255, 255, 0.1);
   --nav-btn-text: rgba(255, 255, 255, 0.65);
-  --nav-btn-hover-bg: rgba(255, 255, 255, 0.10);
+  --nav-btn-hover-bg: rgba(255, 255, 255, 0.1);
   --nav-btn-hover-border: rgba(255, 255, 255, 0.25);
   --nav-btn-hover-text: #ffffff;
   --nav-btn-active-bg: rgba(255, 255, 255, 0.15);

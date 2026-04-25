@@ -3,23 +3,23 @@
  * 管理 loading 遮罩，提供给 layouts/index.vue 的 Spin 组件
  * ============================== */
 
-import { reactive } from 'vue'
-import { defineStore } from 'pinia'
+import { reactive } from 'vue';
+import { defineStore } from 'pinia';
 
 export const useAppStore = defineStore('app', () => {
   const state = reactive({
     theme: 'light',
     loading: false,
-    loadingText: '加载中...'
-  })
+    loadingText: '加载中...',
+  });
 
   function setLoading(val: boolean, text = '加载中...') {
-    state.loading = val
-    state.loadingText = text
+    state.loading = val;
+    state.loadingText = text;
   }
 
   return {
     state,
-    setLoading
-  }
-})
+    setLoading,
+  };
+});

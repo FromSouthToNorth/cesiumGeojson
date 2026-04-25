@@ -12,6 +12,16 @@
 - `pnpm dev` — start dev server
 - `pnpm build` — type-check + production build
 - `pnpm preview` — preview production build
+- `pnpm lint` — ESLint check (src/)
+- `pnpm lint:fix` — ESLint auto-fix
+- `pnpm format` — Prettier check (src/)
+- `pnpm format:fix` — Prettier auto-format
+- `pnpm stylelint` — Stylelint check (CSS/Vue)
+- `pnpm stylelint:fix` — Stylelint auto-fix
+
+## VS Code Setup
+- **Extensions**: ESLint, Prettier, Stylelint
+- Auto-fix on save configured in `.vscode/settings.json`
 
 ## Project Structure
 ```
@@ -109,3 +119,16 @@ Key details:
 - Error handling: `try/catch` with `console.error` + `message.error()` from ant-design-vue
 - Use `message.warning()` for validation feedback, `message.success()` for confirmations
 - File names: PascalCase for `.vue`, camelCase for `.ts`
+
+### Code Formatting (ESLint + Prettier)
+- Config: `eslint.config.mjs` (flat config), `.prettierrc`
+- Single quotes, semicolons, trailing commas, 120 print width
+- Before committing: run `pnpm format:fix && pnpm lint:fix` to auto-fix all issues
+- ESLint: TS strict rules + Vue recommended rules; `any` allowed with warning; unused vars error except `_`-prefixed args
+
+### CSS Style Constraints (Stylelint)
+- Config: `.stylelintrc.json` with `stylelint-config-standard` + `stylelint-order`
+- **Property order**: positioning → display/box → margin/padding → border/background → typography → visual → animation (enforced by `stylelint-order`)
+- **Naming**: kebab-case selectors (BEM-like: `.block__element--modifier`); kebab-case custom properties (`--custom-property`)
+- **Best practices**: use shorthand properties where possible, prefer modern color notation (`rgb(1 2 3 / 0.5)`), use number for alpha values
+- Scoped styles only (no global style leakage from components)

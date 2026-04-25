@@ -1,13 +1,20 @@
-import { ref, computed, watch, toRaw } from 'vue'
-import { defineStore } from 'pinia'
-import { Cartesian3, Cartographic, Rectangle, Math as CesiumMath, ClippingPolygon, ClippingPolygonCollection } from 'cesium'
-import { useCesiumStore } from './cesiumStore'
-import { isValidViewer, genId } from '@/utils/cesium/clipCommon'
-import { useClipDrawing } from '@/utils/cesium/useClipDrawing'
-import { useClipEditing } from '@/utils/cesium/useClipEditing'
-import { useClipHistory } from '@/utils/cesium/useClipHistory'
-import { useClipPersistence } from '@/utils/cesium/useClipPersistence'
-import type { ClipRegion } from '@/utils/cesium/clipCommon'
+import { ref, computed, watch, toRaw } from 'vue';
+import { defineStore } from 'pinia';
+import {
+  Cartesian3,
+  Cartographic,
+  Rectangle,
+  Math as CesiumMath,
+  ClippingPolygon,
+  ClippingPolygonCollection,
+} from 'cesium';
+import { useCesiumStore } from './cesiumStore';
+import { isValidViewer, genId } from '@/utils/cesium/clipCommon';
+import { useClipDrawing } from '@/utils/cesium/useClipDrawing';
+import { useClipEditing } from '@/utils/cesium/useClipEditing';
+import { useClipHistory } from '@/utils/cesium/useClipHistory';
+import { useClipPersistence } from '@/utils/cesium/useClipPersistence';
+import type { ClipRegion } from '@/utils/cesium/clipCommon';
 
 /**
  * 地形裁切 Store
@@ -28,30 +35,30 @@ import type { ClipRegion } from '@/utils/cesium/clipCommon'
  *   → 调用 syncGlobeClipping() 同步到 Cesium globe
  */
 export const useTerrainClipStore = defineStore('terrainClip', () => {
-  const cesiumStore = useCesiumStore()
+  const cesiumStore = useCesiumStore();
   // 用 computed 包装 cesiumStore.viewer 以便 composable 接收 ComputedRef<Viewer | null>
-  const viewer = computed(() => cesiumStore.viewer)
+  const viewer = computed(() => cesiumStore.viewer);
 
   /* ==============================
    *  核心状态
    * ============================== */
 
   /** 反选模式 */
-  const inverse = ref(false)
+  const inverse = ref(false);
   /** 所有裁切区域列表 */
-  const regions = ref<ClipRegion[]>([])
+  const regions = ref<ClipRegion[]>([]);
   /** 当前选中的区域 ID */
-  const activeRegionId = ref<string | null>(null)
+  const activeRegionId = ref<string | null>(null);
   /**
    * 当前活动区域的顶点坐标数组
    * 重要：通过 `positions.value = region.positions` 与 regions[i].positions 共享引用，
    *       对 positions 的修改会直接反映到对应的 region 上。
    */
-  const positions = ref<Cartesian3[]>([])
+  const positions = ref<Cartesian3[]>([]);
   /** 是否有任何区域（UI 用） */
-  const hasRegions = computed(() => regions.value.length > 0)
+  const hasRegions = computed(() => regions.value.length > 0);
   /** 是否有有效（>= 3 顶点）区域（UI 用） */
-  const enabled = computed(() => regions.value.some((r) => r.positions.length >= 3))
+  const enabled = computed(() => regions.value.some((r) => r.positions.length >= 3));
 
   /* ==============================
    *  实例化子模块
@@ -60,16 +67,16 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
   /** 开始绘制新区域 */
   function startDraw() {
     // 创建新区域并与 positions 建立共享引用
-    const region: ClipRegion = { id: genId(), name: `区域 ${regions.value.length + 1}`, positions: [] }
-    regions.value.push(region)
-    activeRegionId.value = region.id
-    positions.value = region.positions
+    const region: ClipRegion = { id: genId(), name: `区域 ${regions.value.length + 1}`, positions: [] };
+    regions.value.push(region);
+    activeRegionId.value = region.id;
+    positions.value = region.positions;
 
-    drawing.startDraw()
+    drawing.startDraw();
   }
 
   /** 历史栈 */
-  const history = useClipHistory(positions)
+  const history = useClipHistory(positions);
 
   /** 绘制模式 */
   const drawing = useClipDrawing({
@@ -77,19 +84,19 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     positions,
     onFinish: () => {
       // 绘制完成 → 记录历史 + 同步裁切 + 保存
-      history.pushHistory()
-      syncGlobeClipping()
-      persistence.save()
+      history.pushHistory();
+      syncGlobeClipping();
+      persistence.save();
     },
     onCancel: () => {
       // 绘制取消/无效 → 移除该空区域
-      regions.value = regions.value.filter((r) => r.id !== activeRegionId.value)
-      const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null
-      activeRegionId.value = prev?.id ?? null
-      positions.value = prev?.positions ?? []
-      if (!prev) syncGlobeClipping()
+      regions.value = regions.value.filter((r) => r.id !== activeRegionId.value);
+      const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null;
+      activeRegionId.value = prev?.id ?? null;
+      positions.value = prev?.positions ?? [];
+      if (!prev) syncGlobeClipping();
     },
-  })
+  });
 
   /** 编辑模式 */
   const editing = useClipEditing({
@@ -99,14 +106,14 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     onStart: () => history.pushHistory(),
     onChange: () => {
       // 顶点变更 → 记录历史 + 同步裁切 + 保存
-      history.pushHistory()
-      syncGlobeClipping()
-      persistence.save()
+      history.pushHistory();
+      syncGlobeClipping();
+      persistence.save();
     },
-  })
+  });
 
   /** 持久化 */
-  const persistence = useClipPersistence(regions, inverse)
+  const persistence = useClipPersistence(regions, inverse);
 
   /* ==============================
    *  撤销 / 重做（带裁切同步）
@@ -114,18 +121,18 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
 
   /** 撤销：历史回退 + 同步 globe + 保存 + 刷新编辑图形 */
   function undo() {
-    if (!history.undo()) return
-    syncGlobeClipping()
-    persistence.save()
-    if (editing.isEditing.value) editing.redraw()
+    if (!history.undo()) return;
+    syncGlobeClipping();
+    persistence.save();
+    if (editing.isEditing.value) editing.redraw();
   }
 
   /** 重做：历史前进 + 同步 globe + 保存 + 刷新编辑图形 */
   function redo() {
-    if (!history.redo()) return
-    syncGlobeClipping()
-    persistence.save()
-    if (editing.isEditing.value) editing.redraw()
+    if (!history.redo()) return;
+    syncGlobeClipping();
+    persistence.save();
+    if (editing.isEditing.value) editing.redraw();
   }
 
   /* ==============================
@@ -134,91 +141,93 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
 
   /** 选中某个区域（切换活动区域） */
   function selectRegion(id: string) {
-    if (drawing.isDrawing.value || editing.isEditing.value) return
-    const region = regions.value.find((r) => r.id === id)
-    if (!region) return
-    activeRegionId.value = region.id
+    if (drawing.isDrawing.value || editing.isEditing.value) return;
+    const region = regions.value.find((r) => r.id === id);
+    if (!region) return;
+    activeRegionId.value = region.id;
     // 建立共享引用，后续所有操作针对该区域的顶点
-    positions.value = region.positions
+    positions.value = region.positions;
   }
 
   /** 进入编辑模式（可选指定区域 ID） */
   function startEdit(regionId?: string) {
-    const id = regionId ?? activeRegionId.value
-    if (!id) return
-    const region = regions.value.find((r) => r.id === id)
-    if (!region || region.positions.length < 3) return
+    const id = regionId ?? activeRegionId.value;
+    if (!id) return;
+    const region = regions.value.find((r) => r.id === id);
+    if (!region || region.positions.length < 3) return;
 
     if (activeRegionId.value !== id) {
-      activeRegionId.value = id
-      positions.value = region.positions
+      activeRegionId.value = id;
+      positions.value = region.positions;
     }
-    editing.startEdit()
+    editing.startEdit();
   }
 
   /** 删除指定区域 */
   function clearRegion(id: string) {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    if (editing.isEditing.value) editing.stopEdit()
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    if (editing.isEditing.value) editing.stopEdit();
     if (drawing.isDrawing.value) {
-      drawing.cancelDraw()
-      return
+      drawing.cancelDraw();
+      return;
     }
-    regions.value = regions.value.filter((r) => r.id !== id)
+    regions.value = regions.value.filter((r) => r.id !== id);
     // 如果删除的是当前活动区域，自动切换到最后一个区域
     if (activeRegionId.value === id) {
-      const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null
-      activeRegionId.value = prev?.id ?? null
-      positions.value = prev?.positions ?? []
+      const prev = regions.value.length > 0 ? regions.value[regions.value.length - 1] : null;
+      activeRegionId.value = prev?.id ?? null;
+      positions.value = prev?.positions ?? [];
     }
-    syncGlobeClipping()
-    persistence.save()
+    syncGlobeClipping();
+    persistence.save();
   }
 
   /** 飞行定位到指定裁切区域 */
   function flyToRegion(id: string) {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    const region = regions.value.find((r) => r.id === id)
-    if (!region || region.positions.length < 3) return
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    const region = regions.value.find((r) => r.id === id);
+    if (!region || region.positions.length < 3) return;
 
     // 计算所有顶点的经纬度范围
-    let minLng = Infinity, maxLng = -Infinity
-    let minLat = Infinity, maxLat = -Infinity
+    let minLng = Infinity,
+      maxLng = -Infinity;
+    let minLat = Infinity,
+      maxLat = -Infinity;
     region.positions.forEach((pos) => {
-      const carto = Cartographic.fromCartesian(pos)
-      const lng = CesiumMath.toDegrees(carto.longitude)
-      const lat = CesiumMath.toDegrees(carto.latitude)
-      if (lng < minLng) minLng = lng
-      if (lng > maxLng) maxLng = lng
-      if (lat < minLat) minLat = lat
-      if (lat > maxLat) maxLat = lat
-    })
+      const carto = Cartographic.fromCartesian(pos);
+      const lng = CesiumMath.toDegrees(carto.longitude);
+      const lat = CesiumMath.toDegrees(carto.latitude);
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    });
 
     // 添加边距后飞行
-    const pad = 0.02
+    const pad = 0.02;
     v.camera.flyTo({
       destination: Rectangle.fromDegrees(minLng - pad, minLat - pad, maxLng + pad, maxLat + pad),
       duration: 1.0,
-    })
+    });
   }
 
   /** 清除所有区域 */
   function clearAll() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
-    if (editing.isEditing.value) editing.stopEdit()
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    if (editing.isEditing.value) editing.stopEdit();
     if (drawing.isDrawing.value) {
-      drawing.cancelDraw()
-      return
+      drawing.cancelDraw();
+      return;
     }
-    regions.value = []
-    activeRegionId.value = null
-    positions.value = []
-    history.reset()
-    syncGlobeClipping()
-    persistence.clear()
+    regions.value = [];
+    activeRegionId.value = null;
+    positions.value = [];
+    history.reset();
+    syncGlobeClipping();
+    persistence.clear();
   }
 
   /* ==============================
@@ -230,23 +239,23 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
    * 每次调用都会重建 ClippingPolygonCollection
    */
   function syncGlobeClipping() {
-    const v = toRaw(viewer.value)
-    if (!isValidViewer(v)) return
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
 
-    const valid = regions.value.filter((r) => r.positions.length >= 3)
+    const valid = regions.value.filter((r) => r.positions.length >= 3);
     if (valid.length === 0) {
       // 没有有效区域 → 清空裁切
-      v.scene.globe.clippingPolygons = new ClippingPolygonCollection()
-      v.scene.globe.depthTestAgainstTerrain = false
-      return
+      v.scene.globe.clippingPolygons = new ClippingPolygonCollection();
+      v.scene.globe.depthTestAgainstTerrain = false;
+      return;
     }
 
-    v.scene.globe.depthTestAgainstTerrain = true
-    const polygons = valid.map((r) => new ClippingPolygon({ positions: r.positions }))
+    v.scene.globe.depthTestAgainstTerrain = true;
+    const polygons = valid.map((r) => new ClippingPolygon({ positions: r.positions }));
     v.scene.globe.clippingPolygons = new ClippingPolygonCollection({
       polygons,
       inverse: inverse.value,
-    })
+    });
   }
 
   /* ==============================
@@ -255,53 +264,56 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
 
   /** 销毁所有子模块资源并重置状态 */
   function destroy() {
-    drawing.destroy()
-    editing.destroy()
-    history.reset()
-    const v = toRaw(viewer.value)
+    drawing.destroy();
+    editing.destroy();
+    history.reset();
+    const v = toRaw(viewer.value);
     if (isValidViewer(v)) {
-      v.scene.globe.clippingPolygons = new ClippingPolygonCollection()
-      v.scene.globe.depthTestAgainstTerrain = false
+      v.scene.globe.clippingPolygons = new ClippingPolygonCollection();
+      v.scene.globe.depthTestAgainstTerrain = false;
     }
-    regions.value = []
-    activeRegionId.value = null
-    positions.value = []
-    inverse.value = false
+    regions.value = [];
+    activeRegionId.value = null;
+    positions.value = [];
+    inverse.value = false;
   }
 
   // 只加载一次标志
-  let loadedOnce = false
+  let loadedOnce = false;
 
   // Viewer 就绪后自动从 localStorage 恢复数据
-  watch(() => cesiumStore.viewer, (v) => {
-    if (v && !v.isDestroyed() && !loadedOnce) {
-      loadedOnce = true
-      const loaded = persistence.load()
-      if (loaded) {
-        // 先设 inverse，再设 regions，避免 inverse watcher 时序竞态
-        inverse.value = loaded.inverse
-        regions.value = loaded.regions
-        const last = loaded.regions[loaded.regions.length - 1]
-        activeRegionId.value = last.id
-        positions.value = last.positions
-        syncGlobeClipping()
+  watch(
+    () => cesiumStore.viewer,
+    (v) => {
+      if (v && !v.isDestroyed() && !loadedOnce) {
+        loadedOnce = true;
+        const loaded = persistence.load();
+        if (loaded) {
+          // 先设 inverse，再设 regions，避免 inverse watcher 时序竞态
+          inverse.value = loaded.inverse;
+          regions.value = loaded.regions;
+          const last = loaded.regions[loaded.regions.length - 1];
+          activeRegionId.value = last.id;
+          positions.value = last.positions;
+          syncGlobeClipping();
+        }
       }
-    }
-    // Viewer 被销毁时清理全部状态
-    if (!v) {
-      destroy()
-      loadedOnce = false
-    }
-  })
+      // Viewer 被销毁时清理全部状态
+      if (!v) {
+        destroy();
+        loadedOnce = false;
+      }
+    },
+  );
 
   // inverse 变更时同步监听
   watch(inverse, () => {
     if (hasRegions.value) {
-      syncGlobeClipping()
-      persistence.save()
-      if (editing.isEditing.value) editing.redraw()
+      syncGlobeClipping();
+      persistence.save();
+      if (editing.isEditing.value) editing.redraw();
     }
-  })
+  });
 
   /* ==============================
    *  导出给 UI 组件使用
@@ -336,5 +348,5 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     redo,
     // lifecycle
     destroy,
-  }
-})
+  };
+});

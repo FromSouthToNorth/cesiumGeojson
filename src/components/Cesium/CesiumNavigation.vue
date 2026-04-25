@@ -32,40 +32,38 @@
 </template>
 
 <script setup lang="ts">
-import { Rectangle } from 'cesium'
-import { toRaw } from 'vue'
-import { useCesiumStore } from '@/stores/cesiumStore'
-import { useThemeStore } from '@/stores/themeStore'
-import { Button, Tooltip } from 'ant-design-vue'
-import {
-  HomeOutlined, MinusOutlined, PlusOutlined, BulbOutlined, BulbFilled,
-} from '@ant-design/icons-vue'
-import Compass from './Compass.vue'
+import { Rectangle } from 'cesium';
+import { toRaw } from 'vue';
+import { useCesiumStore } from '@/stores/cesiumStore';
+import { useThemeStore } from '@/stores/themeStore';
+import { Button, Tooltip } from 'ant-design-vue';
+import { HomeOutlined, MinusOutlined, PlusOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons-vue';
+import Compass from './Compass.vue';
 
-const cesiumStore = useCesiumStore()
-const themeStore = useThemeStore()
+const cesiumStore = useCesiumStore();
+const themeStore = useThemeStore();
 
 /** 飞行至中国范围 (73.5°E–135°E, 18°N–53.5°N) */
 const handleHome = () => {
-  const v = toRaw(cesiumStore.viewer)
-  if (!v) return
-  const chinaRectangle = Rectangle.fromDegrees(73.5, 18.0, 135.0, 53.5)
-  v.camera.flyTo({ destination: chinaRectangle })
-}
+  const v = toRaw(cesiumStore.viewer);
+  if (!v) return;
+  const chinaRectangle = Rectangle.fromDegrees(73.5, 18.0, 135.0, 53.5);
+  v.camera.flyTo({ destination: chinaRectangle });
+};
 
 /** 缩小（按当前高度的 10%） */
 const handleZoomIn = () => {
-  const v = toRaw(cesiumStore.viewer)
-  if (!v) return
-  v.camera.zoomIn(v.camera.positionCartographic.height * 0.1)
-}
+  const v = toRaw(cesiumStore.viewer);
+  if (!v) return;
+  v.camera.zoomIn(v.camera.positionCartographic.height * 0.1);
+};
 
 /** 放大（按当前高度的 10%） */
 const handleZoomOut = () => {
-  const v = toRaw(cesiumStore.viewer)
-  if (!v) return
-  v.camera.zoomOut(v.camera.positionCartographic.height * 0.1)
-}
+  const v = toRaw(cesiumStore.viewer);
+  if (!v) return;
+  v.camera.zoomOut(v.camera.positionCartographic.height * 0.1);
+};
 </script>
 
 <style scoped>
@@ -75,40 +73,40 @@ const handleZoomOut = () => {
   right: 12px;
   z-index: 10;
   display: flex;
+  flex-shrink: 0;
   align-items: flex-start;
   gap: 12px;
-  flex-shrink: 0;
 }
 
 .nav-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: var(--surface-bg);
-  backdrop-filter: blur(8px);
+  padding: 6px;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
-  padding: 6px;
+  background: var(--surface-bg);
+  backdrop-filter: blur(8px);
 }
 
 .nav-btn {
-  width: 36px;
-  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  background: var(--nav-btn-bg);
   border: 1px solid var(--nav-btn-border);
   border-radius: 6px;
+  background: var(--nav-btn-bg);
   color: var(--nav-btn-text);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .nav-btn:hover {
-  background: var(--nav-btn-hover-bg);
   border-color: var(--nav-btn-hover-border);
+  background: var(--nav-btn-hover-bg);
   color: var(--nav-btn-hover-text);
 }
 

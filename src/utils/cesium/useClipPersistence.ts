@@ -1,6 +1,6 @@
-import { Cartesian3 } from 'cesium'
-import type { Ref } from 'vue'
-import type { ClipRegion, PersistedData } from './clipCommon'
+import { Cartesian3 } from 'cesium';
+import type { Ref } from 'vue';
+import type { ClipRegion, PersistedData } from './clipCommon';
 
 /**
  * 持久化 —— localStorage 读写
@@ -17,7 +17,7 @@ import type { ClipRegion, PersistedData } from './clipCommon'
  *   由调用方（store）控制赋值顺序，避免 Vue reactivity 时序竞态。
  */
 
-const STORAGE_KEY = 'cesium-terrain-clip'
+const STORAGE_KEY = 'cesium-terrain-clip';
 
 export function useClipPersistence(regions: Ref<ClipRegion[]>, inverse: Ref<boolean>) {
   /**
@@ -32,9 +32,9 @@ export function useClipPersistence(regions: Ref<ClipRegion[]>, inverse: Ref<bool
         positions: r.positions.map((p) => [p.x, p.y, p.z]),
       })),
       inverse: inverse.value,
-    }
+    };
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
       /* 存储空间不足时静默忽略 */
     }
@@ -47,10 +47,10 @@ export function useClipPersistence(regions: Ref<ClipRegion[]>, inverse: Ref<bool
    */
   function load(): { regions: ClipRegion[]; inverse: boolean } | null {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return null
-      const data: PersistedData = JSON.parse(raw)
-      if (!data.regions?.length) return null
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const data: PersistedData = JSON.parse(raw);
+      if (!data.regions?.length) return null;
 
       return {
         inverse: data.inverse ?? false,
@@ -59,17 +59,17 @@ export function useClipPersistence(regions: Ref<ClipRegion[]>, inverse: Ref<bool
           name: r.name ?? '区域',
           positions: r.positions.map(([x, y, z]) => new Cartesian3(x, y, z)),
         })),
-      }
+      };
     } catch {
       /* 数据损坏时静默忽略 */
-      return null
+      return null;
     }
   }
 
   /** 清除本地存储中的裁切数据 */
   function clear() {
-    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(STORAGE_KEY);
   }
 
-  return { save, load, clear }
+  return { save, load, clear };
 }

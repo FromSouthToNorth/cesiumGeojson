@@ -24,12 +24,8 @@
       <!-- ── 绘制中 ── -->
       <template v-if="store.isDrawing">
         <Button danger block @click="store.cancelDraw()">取消绘制</Button>
-        <div class="drawing-tip">
-          左键点击绘制顶点，双击左键撤销，右键点击结束绘制
-        </div>
-        <div class="vertex-count">
-          已绘制 {{ store.positions.length }} 个顶点
-        </div>
+        <div class="drawing-tip">左键点击绘制顶点，双击左键撤销，右键点击结束绘制</div>
+        <div class="vertex-count">已绘制 {{ store.positions.length }} 个顶点</div>
       </template>
 
       <!-- ── 已有区域（非编辑状态） ── -->
@@ -45,8 +41,12 @@
             <span class="region-dot" />
             <span class="region-name">{{ region.name }}</span>
             <span class="region-count">{{ region.positions.length }} 顶点</span>
-            <Button size="small" type="link" class="region-act-btn" @click.stop="store.flyToRegion(region.id)">定位</Button>
-            <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)">编辑</Button>
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.flyToRegion(region.id)"
+              >定位</Button
+            >
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)"
+              >编辑</Button
+            >
             <Popconfirm title="确认删除该区域？" placement="left" @confirm.stop="store.clearRegion(region.id)">
               <Button size="small" type="link" danger class="region-act-btn" @click.stop>删除</Button>
             </Popconfirm>
@@ -78,20 +78,21 @@
 </template>
 
 <script setup lang="ts">
-import { useTerrainClipStore } from '@/stores/terrainClipStore'
-import { Button, Space, Switch, Popconfirm } from 'ant-design-vue'
-import SidePanel from './SidePanel.vue'
+import { useTerrainClipStore } from '@/stores/terrainClipStore';
+import { Button, Space, Switch, Popconfirm } from 'ant-design-vue';
+import SidePanel from './SidePanel.vue';
 
-defineOptions({ name: 'TerrainClipDrawer' })
+defineOptions({ name: 'TerrainClipDrawer' });
 
-defineProps<{ visible: boolean }>()
-const emit = defineEmits<{ 'update:visible': [value: boolean] }>()
+defineProps<{ visible: boolean }>();
+const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 
-const store = useTerrainClipStore()
+const store = useTerrainClipStore();
 </script>
 
 <style scoped>
-.drawing-tip, .editing-tip {
+.drawing-tip,
+.editing-tip {
   color: var(--color-text-secondary);
   font-size: 13px;
   line-height: 1.6;
@@ -99,13 +100,13 @@ const store = useTerrainClipStore()
 
 .editing-tip kbd {
   display: inline-block;
+  margin: 0 1px;
   padding: 1px 5px;
-  font-size: 11px;
-  font-family: inherit;
-  background: var(--panel-surface);
   border: 1px solid var(--panel-border);
   border-radius: 3px;
-  margin: 0 1px;
+  background: var(--panel-surface);
+  font-family: inherit;
+  font-size: 11px;
 }
 
 .vertex-count {
@@ -116,8 +117,8 @@ const store = useTerrainClipStore()
 .camera-lock-hint {
   display: inline-block;
   margin-top: 4px;
-  font-size: 11px;
   color: var(--warning-color, #faad14);
+  font-size: 11px;
 }
 
 .edit-toolbar {
@@ -126,9 +127,9 @@ const store = useTerrainClipStore()
 }
 
 .region-list {
+  overflow: hidden;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
-  overflow: hidden;
 }
 
 .region-row {
@@ -136,9 +137,9 @@ const store = useTerrainClipStore()
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
+  border-bottom: 1px solid var(--panel-border);
   cursor: pointer;
   transition: background 0.15s;
-  border-bottom: 1px solid var(--panel-border);
 }
 
 .region-row:last-child {
@@ -154,11 +155,11 @@ const store = useTerrainClipStore()
 }
 
 .region-dot {
+  flex-shrink: 0;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
   border: 2px solid var(--primary-color);
-  flex-shrink: 0;
+  border-radius: 50%;
   transition: background 0.15s;
 }
 
@@ -170,24 +171,24 @@ const store = useTerrainClipStore()
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--color-text);
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .region-count {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
   flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .region-act-btn {
-  font-size: 12px;
-  padding: 0 4px;
-  height: auto;
   flex-shrink: 0;
+  height: auto;
+  padding: 0 4px;
+  font-size: 12px;
 }
 </style>

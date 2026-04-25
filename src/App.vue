@@ -7,7 +7,7 @@
 import { ConfigProvider, theme } from 'ant-design-vue';
 import { useThemeStore } from '@/stores/themeStore';
 
-const themeStore = useThemeStore()
+const themeStore = useThemeStore();
 </script>
 
 <template>

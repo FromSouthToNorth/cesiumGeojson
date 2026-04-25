@@ -20,19 +20,19 @@
 </template>
 
 <script setup lang="ts">
-import { Button } from 'ant-design-vue'
-import { CloseOutlined } from '@ant-design/icons-vue'
+import { Button } from 'ant-design-vue';
+import { CloseOutlined } from '@ant-design/icons-vue';
 
-defineOptions({ name: 'SidePanel' })
+defineOptions({ name: 'SidePanel' });
 
 defineProps<{
-  visible: boolean
-  title: string
-}>()
+  visible: boolean;
+  title: string;
+}>();
 
 defineEmits<{
-  'update:visible': [value: boolean]
-}>()
+  'update:visible': [value: boolean];
+}>();
 </script>
 
 <style scoped>
@@ -41,54 +41,53 @@ defineEmits<{
   top: 12px;
   left: 56px;
   z-index: 9;
-  width: 380px;
-  max-height: calc(100vh - 24px);
-  background: var(--surface-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
   display: flex;
   flex-direction: column;
+  width: 380px;
+  max-height: calc(100vh - 24px);
   overflow: hidden;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-bg);
+  backdrop-filter: blur(12px);
 }
 
 .panel-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
   border-bottom: 1px solid var(--surface-header-border, var(--surface-border));
-  flex-shrink: 0;
 }
 
 .panel-title {
+  color: var(--color-text);
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-text);
 }
 
 .panel-close {
-  color: var(--surface-text-muted);
-  width: 28px;
-  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--surface-text-muted);
 }
 
 .panel-close:hover {
-  color: var(--color-text);
   background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .panel-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 14px;
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  padding: 14px;
 }
 
 .panel-enter-active,

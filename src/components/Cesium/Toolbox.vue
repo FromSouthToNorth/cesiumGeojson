@@ -23,11 +23,7 @@
 
       <div class="toolbox-group">
         <Tooltip title="地形裁切" placement="right">
-          <Button
-            class="tool-btn"
-            :type="activeTool === 'clip' ? 'primary' : 'default'"
-            @click="toggleTool('clip')"
-          >
+          <Button class="tool-btn" :type="activeTool === 'clip' ? 'primary' : 'default'" @click="toggleTool('clip')">
             <ScissorOutlined />
           </Button>
         </Tooltip>
@@ -35,11 +31,7 @@
 
       <div class="toolbox-group">
         <Tooltip title="添加观测点" placement="right">
-          <Button
-            class="tool-btn"
-            :type="activeTool === 'point' ? 'primary' : 'default'"
-            @click="toggleTool('point')"
-          >
+          <Button class="tool-btn" :type="activeTool === 'point' ? 'primary' : 'default'" @click="toggleTool('point')">
             <EnvironmentOutlined />
           </Button>
         </Tooltip>
@@ -53,29 +45,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Button, Tooltip } from 'ant-design-vue'
-import {
-  AppstoreOutlined,
-  FileTextOutlined,
-  ScissorOutlined,
-  EnvironmentOutlined,
-} from '@ant-design/icons-vue'
-import GeoJsonDrawer from './GeoJsonDrawer.vue'
-import TerrainClipDrawer from './TerrainClipDrawer.vue'
-import PointCreator from './PointCreator.vue'
+import { ref } from 'vue';
+import { Button, Tooltip } from 'ant-design-vue';
+import { AppstoreOutlined, FileTextOutlined, ScissorOutlined, EnvironmentOutlined } from '@ant-design/icons-vue';
+import GeoJsonDrawer from './GeoJsonDrawer.vue';
+import TerrainClipDrawer from './TerrainClipDrawer.vue';
+import PointCreator from './PointCreator.vue';
 
-defineOptions({ name: 'Toolbox' })
+defineOptions({ name: 'Toolbox' });
 
 /** 当前打开的工具面板名称，null 表示全部关闭 */
-const activeTool = ref<string | null>(null)
+const activeTool = ref<string | null>(null);
 
 function toggleTool(tool: string) {
-  activeTool.value = activeTool.value === tool ? null : tool
+  activeTool.value = activeTool.value === tool ? null : tool;
 }
 
 function onPanelClose(visible: boolean) {
-  if (!visible) activeTool.value = null
+  if (!visible) activeTool.value = null;
 }
 </script>
 
@@ -91,15 +78,15 @@ function onPanelClose(visible: boolean) {
 .toolbox-bar {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   align-items: center;
   gap: 4px;
-  background: var(--surface-bg);
-  backdrop-filter: blur(8px);
+  width: 48px;
+  padding: 8px 6px;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
-  padding: 8px 6px;
-  width: 48px;
-  flex-shrink: 0;
+  background: var(--surface-bg);
+  backdrop-filter: blur(8px);
 }
 
 .toolbox-header {
@@ -107,14 +94,14 @@ function onPanelClose(visible: boolean) {
   align-items: center;
   justify-content: center;
   width: 100%;
+  margin-bottom: 2px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--surface-header-border, var(--surface-border));
-  margin-bottom: 2px;
 }
 
 .header-icon {
-  font-size: 18px;
   color: var(--surface-text-muted);
+  font-size: 18px;
 }
 
 .toolbox-group {
@@ -126,23 +113,23 @@ function onPanelClose(visible: boolean) {
 }
 
 .tool-btn {
-  width: 36px;
-  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 36px;
+  height: 36px;
   padding: 0;
+  border: 1px solid var(--nav-btn-border);
   border-radius: 6px;
   background: var(--nav-btn-bg);
-  border: 1px solid var(--nav-btn-border);
   color: var(--nav-btn-text);
-  transition: all 0.2s;
   font-size: 16px;
+  transition: all 0.2s;
 }
 
 .tool-btn:hover {
-  background: var(--nav-btn-hover-bg);
   border-color: var(--nav-btn-hover-border);
+  background: var(--nav-btn-hover-bg);
   color: var(--nav-btn-hover-text);
 }
 

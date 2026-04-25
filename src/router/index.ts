@@ -4,9 +4,9 @@
  * 使用 createWebHistory（无 hash 模式）
  * ============================== */
 
-import { createRouter, createWebHistory } from 'vue-router'
-import Home from '@/views/Home.vue'
-import Layout from '@/layouts/index.vue'
+import { createRouter, createWebHistory } from 'vue-router';
+import Home from '@/views/Home.vue';
+import Layout from '@/layouts/index.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,11 +20,11 @@ const router = createRouter({
         {
           path: '/cesium',
           name: 'cesium',
-          component: Home
-        }
-      ]
-    }
-  ]
-})
+          component: Home,
+        },
+      ],
+    },
+  ],
+});
 
-export default router
+export default router;
