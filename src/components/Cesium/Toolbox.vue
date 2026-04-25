@@ -10,7 +10,10 @@
       </div>
 
       <div class="toolbox-group">
-        <Tooltip title="GeoJSON 管理" placement="right">
+        <Tooltip
+          title="GeoJSON 管理"
+          placement="right"
+        >
           <Button
             class="tool-btn"
             :type="activeTool === 'geojson' ? 'primary' : 'default'"
@@ -22,25 +25,48 @@
       </div>
 
       <div class="toolbox-group">
-        <Tooltip title="地形裁切" placement="right">
-          <Button class="tool-btn" :type="activeTool === 'clip' ? 'primary' : 'default'" @click="toggleTool('clip')">
+        <Tooltip
+          title="地形裁切"
+          placement="right"
+        >
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'clip' ? 'primary' : 'default'"
+            @click="toggleTool('clip')"
+          >
             <ScissorOutlined />
           </Button>
         </Tooltip>
       </div>
 
       <div class="toolbox-group">
-        <Tooltip title="添加观测点" placement="right">
-          <Button class="tool-btn" :type="activeTool === 'point' ? 'primary' : 'default'" @click="toggleTool('point')">
+        <Tooltip
+          title="添加观测点"
+          placement="right"
+        >
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'point' ? 'primary' : 'default'"
+            @click="toggleTool('point')"
+          >
             <EnvironmentOutlined />
           </Button>
         </Tooltip>
       </div>
     </div>
 
-    <GeoJsonDrawer :visible="activeTool === 'geojson'" @update:visible="onPanelClose" />
-    <TerrainClipDrawer :visible="activeTool === 'clip'" @update:visible="onPanelClose" />
-    <PointCreator :visible="activeTool === 'point'" @update:visible="onPanelClose" />
+    <GeoJsonDrawer
+      :visible="activeTool === 'geojson'"
+      @update:visible="onPanelClose"
+    />
+    <TerrainClipDrawer
+      :visible="activeTool === 'clip'"
+      @update:visible="onPanelClose"
+    />
+    <PointCreator
+      :visible="activeTool === 'point'"
+      @update:visible="onPanelClose"
+    />
   </div>
 </template>
 

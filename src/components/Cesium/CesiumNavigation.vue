@@ -5,24 +5,48 @@
 <template>
   <div class="cesium-navigation">
     <div class="nav-group">
-      <Tooltip title="切换主题" placement="left">
-        <Button class="nav-btn" @click="themeStore.toggle">
+      <Tooltip
+        title="切换主题"
+        placement="left"
+      >
+        <Button
+          class="nav-btn"
+          @click="themeStore.toggle"
+        >
           <BulbOutlined v-if="themeStore.isDark" />
           <BulbFilled v-else />
         </Button>
       </Tooltip>
-      <Tooltip title="飞行至初始视野" placement="left">
-        <Button class="nav-btn" @click="handleHome">
+      <Tooltip
+        title="飞行至初始视野"
+        placement="left"
+      >
+        <Button
+          class="nav-btn"
+          @click="handleHome"
+        >
           <HomeOutlined />
         </Button>
       </Tooltip>
-      <Tooltip title="缩小" placement="left">
-        <Button class="nav-btn" @click="handleZoomOut">
+      <Tooltip
+        title="缩小"
+        placement="left"
+      >
+        <Button
+          class="nav-btn"
+          @click="handleZoomOut"
+        >
           <MinusOutlined />
         </Button>
       </Tooltip>
-      <Tooltip title="放大" placement="left">
-        <Button class="nav-btn" @click="handleZoomIn">
+      <Tooltip
+        title="放大"
+        placement="left"
+      >
+        <Button
+          class="nav-btn"
+          @click="handleZoomIn"
+        >
           <PlusOutlined />
         </Button>
       </Tooltip>

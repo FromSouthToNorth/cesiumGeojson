@@ -4,7 +4,10 @@
 -->
 <template>
   <Layout>
-    <Spin :spinning="state.loading" :tip="state.loadingText">
+    <Spin
+      :spinning="state.loading"
+      :tip="state.loadingText"
+    >
       <router-view />
     </Spin>
   </Layout>

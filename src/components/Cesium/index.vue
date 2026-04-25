@@ -3,7 +3,10 @@
   创建并持有 Viewer 实例，挂载工具箱和导航控件
 -->
 <template>
-  <div ref="cesiumContainer" class="cesium-container">
+  <div
+    ref="cesiumContainer"
+    class="cesium-container"
+  >
     <Toolbox />
     <CesiumNavigation />
   </div>

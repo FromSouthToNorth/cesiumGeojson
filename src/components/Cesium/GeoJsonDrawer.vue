@@ -15,13 +15,7 @@
     <div v-if="geoJsonStore.layers.length" class="layers-section">
       <div class="layers-toolbar">
         <span class="layers-count">共 {{ geoJsonStore.layers.length }} 个图层</span>
-        <InputSearch
-          v-model:value="searchQuery"
-          placeholder="搜索图层名称"
-          allow-clear
-          size="small"
-          class="layer-search"
-        />
+        <InputSearch v-model:value="searchQuery" placeholder="搜索图层名称" allow-clear size="small" class="layer-search" />
       </div>
 
       <div ref="scrollRef" class="layers-scroll">
@@ -42,21 +36,13 @@
                     </Button>
                   </Tooltip>
                   <Tooltip :title="layer.show ? '隐藏图层' : '显示图层'">
-                    <Button
-                      type="text"
-                      size="small"
-                      class="action-btn"
-                      @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)"
-                    >
+                    <Button type="text" size="small" class="action-btn"
+                      @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)">
                       <EyeOutlined v-if="layer.show" />
                       <EyeInvisibleOutlined v-else />
                     </Button>
                   </Tooltip>
-                  <Popconfirm
-                    title="确认删除该图层？"
-                    placement="topRight"
-                    @confirm.stop="geoJsonStore.removeLayer(layer.id)"
-                  >
+                  <Popconfirm title="确认删除该图层？" placement="topRight" @confirm.stop="geoJsonStore.removeLayer(layer.id)">
                     <Tooltip title="删除图层">
                       <Button type="text" danger size="small" class="action-btn" @click.stop>
                         <DeleteOutlined />
@@ -67,11 +53,8 @@
               </div>
             </template>
 
-            <List
-              :data-source="layer.features"
-              size="small"
-              :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }"
-            >
+            <List :data-source="layer.features" size="small"
+              :pagination="{ pageSize: 5, size: 'small', hideOnSinglePage: true }">
               <template #renderItem="{ item }">
                 <div class="feature-wrapper">
                   <ListItem class="feature-item" @click="geoJsonStore.flyToFeature(item.entity)">
@@ -81,32 +64,22 @@
                     </div>
                     <div class="feature-actions">
                       <Tooltip title="查看属性">
-                        <Button
-                          type="text"
-                          size="small"
-                          class="action-btn"
-                          @click.stop="toggleFeatureProperties(item.id)"
-                        >
+                        <Button type="text" size="small" class="action-btn"
+                          @click.stop="toggleFeatureProperties(item.id)">
                           <InfoCircleOutlined />
                         </Button>
                       </Tooltip>
                       <Tooltip title="定位要素">
-                        <Button
-                          type="text"
-                          size="small"
-                          class="action-btn"
-                          @click.stop="geoJsonStore.flyToFeature(item.entity)"
-                        >
+                        <Button type="text" size="small" class="action-btn"
+                          @click.stop="geoJsonStore.flyToFeature(item.entity)">
                           <AimOutlined />
                         </Button>
                       </Tooltip>
                     </div>
                   </ListItem>
 
-                  <div
-                    v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
-                    class="feature-properties"
-                  >
+                  <div v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
+                    class="feature-properties">
                     <Descriptions bordered :column="1" size="small">
                       <DescriptionsItem v-for="(val, key) in item.properties" :key="key" :label="String(key)">
                         <span class="property-value" :title="String(val)">{{ val }}</span>

@@ -4,9 +4,19 @@
   创建后可自动围绕旋转，管理已创建的点列表
 -->
 <template>
-  <SidePanel :visible="visible" title="添加观测点" @update:visible="emit('update:visible', $event)">
-    <Form layout="vertical" :model="form">
-      <Form.Item label="经度 (Longitude)" required>
+  <SidePanel
+    :visible="visible"
+    title="添加观测点"
+    @update:visible="emit('update:visible', $event)"
+  >
+    <Form
+      layout="vertical"
+      :model="form"
+    >
+      <Form.Item
+        label="经度 (Longitude)"
+        required
+      >
         <InputNumber
           v-model:value="form.lng"
           :min="-180"
@@ -17,7 +27,10 @@
           placeholder="例如: 116.397"
         />
       </Form.Item>
-      <Form.Item label="纬度 (Latitude)" required>
+      <Form.Item
+        label="纬度 (Latitude)"
+        required
+      >
         <InputNumber
           v-model:value="form.lat"
           :min="-90"
@@ -42,27 +55,51 @@
         <Checkbox v-model:checked="autoRotate">创建后自动围绕旋转</Checkbox>
       </Form.Item>
       <Form.Item>
-        <Button type="primary" block :loading="isCreating" @click="handleCreate">
+        <Button
+          type="primary"
+          block
+          :loading="isCreating"
+          @click="handleCreate"
+        >
           <EnvironmentOutlined /> 创建点位
         </Button>
       </Form.Item>
     </Form>
 
-    <div v-if="points.length" class="points-section">
+    <div
+      v-if="points.length"
+      class="points-section"
+    >
       <div class="points-header">
         <span class="points-count">已创建 {{ points.length }} 个标记点</span>
-        <Popconfirm title="确认清除所有标记点？" @confirm="clearAllPoints">
-          <Button danger size="small" type="dashed">清除全部</Button>
+        <Popconfirm
+          title="确认清除所有标记点？"
+          @confirm="clearAllPoints"
+        >
+          <Button
+            danger
+            size="small"
+            type="dashed"
+            >清除全部</Button
+          >
         </Popconfirm>
       </div>
       <div class="points-list">
-        <div v-for="(p, i) in points" :key="p.id" class="point-item">
+        <div
+          v-for="(p, i) in points"
+          :key="p.id"
+          class="point-item"
+        >
           <div class="point-info">
             <span class="point-index">{{ i + 1 }}</span>
             <span class="point-coords">{{ p.lng.toFixed(4) }}, {{ p.lat.toFixed(4) }}</span>
           </div>
           <Dropdown :menu="{ items: menuItems(p), onClick: ({ key }) => handleMenuClick(key as string, p, i) }">
-            <Button type="text" size="small" class="action-btn">
+            <Button
+              type="text"
+              size="small"
+              class="action-btn"
+            >
               <MoreOutlined />
             </Button>
           </Dropdown>
