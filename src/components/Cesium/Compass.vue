@@ -4,59 +4,20 @@
   支持鼠标左右拖拽旋转相机，双击复位至正北俯视
 -->
 <template>
-  <div
-    ref="containerRef"
-    class="compass-container"
-  >
-    <div
-      class="compass"
-      :style="{ transform: `rotate(${heading}deg)` }"
-      @mousedown.prevent="handleMouseDown"
-      @dblclick.prevent="handleDoubleClick"
-    >
-      <svg
-        viewBox="0 0 100 100"
-        class="compass-svg"
-      >
-        <circle
-          cx="50"
-          cy="50"
-          r="48"
-          class="compass-circle"
-          stroke-width="2"
-        />
-        <polygon
-          points="50,10 55,50 50,45 45,50"
-          class="compass-north"
-        />
-        <polygon
-          points="50,90 55,50 50,55 45,50"
-          class="compass-south"
-        />
-        <text
-          x="50"
-          y="8"
-          text-anchor="middle"
-          class="compass-label"
-          font-size="8"
-          font-weight="bold"
-        >
-          N
-        </text>
+  <div ref="containerRef" class="compass-container">
+    <div class="compass" :style="{ transform: `rotate(${heading}deg)` }" @mousedown.prevent="handleMouseDown"
+      @dblclick.prevent="handleDoubleClick">
+      <svg viewBox="0 0 100 100" class="compass-svg">
+        <circle cx="50" cy="50" r="48" class="compass-circle" stroke-width="2" />
+        <polygon points="50,10 55,50 50,45 45,50" class="compass-north" />
+        <polygon points="50,90 55,50 50,55 45,50" class="compass-south" />
+        <text x="50" y="8" text-anchor="middle" class="compass-label" font-size="8" font-weight="bold">N</text>
       </svg>
     </div>
-    <div
-      v-if="isDragging"
-      class="compass-indicator"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        class="drag-icon"
-      >
-        <path
-          d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
-          fill="currentColor"
-        />
+    <div v-if="isDragging" class="compass-indicator">
+      <svg viewBox="0 0 24 24" class="drag-icon">
+        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
+          fill="currentColor" />
       </svg>
     </div>
   </div>
@@ -213,6 +174,7 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
+
   0%,
   100% {
     opacity: 0.6;

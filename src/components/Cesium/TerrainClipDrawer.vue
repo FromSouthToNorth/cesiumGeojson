@@ -3,22 +3,12 @@
   提供绘制、编辑、管理裁切区域的 UI，与 terrainClipStore 绑定的协调器模式
 -->
 <template>
-  <SidePanel
-    :visible="visible"
-    title="地形裁切"
-    @update:visible="emit('update:visible', $event)"
-  >
-    <Space
-      direction="vertical"
-      style="width: 100%"
-    >
+  <SidePanel :visible="visible" title="地形裁切" @update:visible="emit('update:visible', $event)">
+    <Space direction="vertical" style="width: 100%">
       <!-- Inverse 反选开关 -->
       <div>
         <span>Inverse（反选）</span>
-        <Switch
-          v-model:checked="store.inverse"
-          style="margin-left: 8px"
-        />
+        <Switch v-model:checked="store.inverse" style="margin-left: 8px" />
       </div>
 
       <!-- ── 空闲状态：无区域 ── -->
@@ -33,12 +23,7 @@
 
       <!-- ── 绘制中 ── -->
       <template v-if="store.isDrawing">
-        <Button
-          danger
-          block
-          @click="store.cancelDraw()"
-          >取消绘制</Button
-        >
+        <Button danger block @click="store.cancelDraw()">取消绘制</Button>
         <div class="drawing-tip">左键点击绘制顶点，双击左键撤销，右键点击结束绘制</div>
         <div class="vertex-count">已绘制 {{ store.positions.length }} 个顶点</div>
       </template>
@@ -56,76 +41,30 @@
             <span class="region-dot" />
             <span class="region-name">{{ region.name }}</span>
             <span class="region-count">{{ region.positions.length }} 顶点</span>
-            <Button
-              size="small"
-              type="link"
-              class="region-act-btn"
-              @click.stop="store.flyToRegion(region.id)"
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.flyToRegion(region.id)"
               >定位</Button
             >
-            <Button
-              size="small"
-              type="link"
-              class="region-act-btn"
-              @click.stop="store.startEdit(region.id)"
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)"
               >编辑</Button
             >
-            <Popconfirm
-              title="确认删除该区域？"
-              placement="left"
-              @confirm.stop="store.clearRegion(region.id)"
-            >
-              <Button
-                size="small"
-                type="link"
-                danger
-                class="region-act-btn"
-                @click.stop
-                >删除</Button
-              >
+            <Popconfirm title="确认删除该区域？" placement="left" @confirm.stop="store.clearRegion(region.id)">
+              <Button size="small" type="link" danger class="region-act-btn" @click.stop>删除</Button>
             </Popconfirm>
           </div>
         </div>
 
-        <Button
-          block
-          @click="store.startDraw()"
-          >+ 新增区域</Button
-        >
-        <Popconfirm
-          title="确认清除所有裁切区域？"
-          placement="bottom"
-          @confirm="store.clearAll()"
-        >
-          <Button
-            danger
-            block
-            >清除全部</Button
-          >
+        <Button block @click="store.startDraw()">+ 新增区域</Button>
+        <Popconfirm title="确认清除所有裁切区域？" placement="bottom" @confirm="store.clearAll()">
+          <Button danger block>清除全部</Button>
         </Popconfirm>
       </template>
 
       <!-- ── 编辑中 ── -->
       <template v-if="store.isEditing">
-        <Button
-          type="primary"
-          block
-          @click="store.stopEdit()"
-          >完成编辑</Button
-        >
+        <Button type="primary" block @click="store.stopEdit()">完成编辑</Button>
         <div class="edit-toolbar">
-          <Button
-            size="small"
-            :disabled="!store.canUndo"
-            @click="store.undo()"
-            >撤销</Button
-          >
-          <Button
-            size="small"
-            :disabled="!store.canRedo"
-            @click="store.redo()"
-            >重做</Button
-          >
+          <Button size="small" :disabled="!store.canUndo" @click="store.undo()">撤销</Button>
+          <Button size="small" :disabled="!store.canRedo" @click="store.redo()">重做</Button>
         </div>
         <div class="editing-tip">
           拖动顶点调整形状 · 点击线段添加顶点 · 右键顶点删除<br />

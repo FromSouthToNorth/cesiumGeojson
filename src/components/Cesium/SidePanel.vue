@@ -5,18 +5,10 @@
 -->
 <template>
   <Transition name="panel">
-    <div
-      v-if="visible"
-      class="side-panel"
-    >
+    <div v-if="visible" class="side-panel">
       <div class="panel-header">
         <span class="panel-title">{{ title }}</span>
-        <Button
-          type="text"
-          size="small"
-          class="panel-close"
-          @click="$emit('update:visible', false)"
-        >
+        <Button type="text" size="small" class="panel-close" @click="$emit('update:visible', false)">
           <CloseOutlined />
         </Button>
       </div>
