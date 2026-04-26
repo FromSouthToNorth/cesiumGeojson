@@ -36,21 +36,41 @@
           </Button>
         </Tooltip>
       </div>
+
+      <div class="toolbox-group">
+        <Tooltip title="地质路径" placement="right">
+          <Button class="tool-btn" :type="activeTool === 'geoPath' ? 'primary' : 'default'" @click="toggleTool('geoPath')">
+            <NodeIndexOutlined />
+          </Button>
+        </Tooltip>
+      </div>
+
+      <div class="toolbox-group">
+        <Tooltip title="多边形勘测" placement="right">
+          <Button class="tool-btn" :type="activeTool === 'geoPolygon' ? 'primary' : 'default'" @click="toggleTool('geoPolygon')">
+            <AuditOutlined />
+          </Button>
+        </Tooltip>
+      </div>
     </div>
 
-    <GeoJsonDrawer :visible="activeTool === 'geojson'" @update:visible="onPanelClose" />
-    <TerrainClipDrawer :visible="activeTool === 'clip'" @update:visible="onPanelClose" />
+    <GeoJson :visible="activeTool === 'geojson'" @update:visible="onPanelClose" />
+    <TerrainClip :visible="activeTool === 'clip'" @update:visible="onPanelClose" />
     <PointCreator :visible="activeTool === 'point'" @update:visible="onPanelClose" />
+    <GeoPath :visible="activeTool === 'geoPath'" @update:visible="onPanelClose" />
+    <GeoPolygon :visible="activeTool === 'geoPolygon'" @update:visible="onPanelClose" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { Button, Tooltip } from 'ant-design-vue';
-import { AppstoreOutlined, FileTextOutlined, ScissorOutlined, EnvironmentOutlined } from '@ant-design/icons-vue';
-import GeoJsonDrawer from './GeoJsonDrawer.vue';
-import TerrainClipDrawer from './TerrainClipDrawer.vue';
+import { AppstoreOutlined, FileTextOutlined, ScissorOutlined, EnvironmentOutlined, NodeIndexOutlined, AuditOutlined } from '@ant-design/icons-vue';
+import GeoJson from './GeoJson.vue';
+import TerrainClip from './TerrainClip.vue';
 import PointCreator from './PointCreator.vue';
+import GeoPath from './GeoPath.vue';
+import GeoPolygon from './GeoPolygon.vue';
 
 defineOptions({ name: 'Toolbox' });
 

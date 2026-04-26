@@ -39,7 +39,7 @@ let currentX = 0; // 拖拽当前鼠标 X
 /** 从相机 heading 更新罗盘角度（取反使物理方向对应） */
 function updateHeading() {
   const v = toRaw(cesiumStore.viewer);
-  if (!cesiumStore.hasViewer) return;
+  if (!v) return;
   const headingVal = CesiumMath.toDegrees(v.camera.heading);
   heading.value = -headingVal;
 }
@@ -76,13 +76,14 @@ function handleMouseMove(e: MouseEvent) {
   const deltaX = e.clientX - currentX;
   currentX = e.clientX;
   const v = toRaw(cesiumStore.viewer);
+  if (!v) return;
   v.scene.camera.twistLeft(deltaX * 0.005);
   updateHeading();
 }
 
 /** 结束拖拽：移除全局事件 */
-function handleMouseUp(e: MouseEvent) {
-  e.stopPropagation();
+function handleMouseUp(e?: MouseEvent) {
+  e?.stopPropagation();
   isDragging.value = false;
   document.removeEventListener('mousemove', handleMouseMove);
   document.removeEventListener('mouseup', handleMouseUp);
@@ -109,6 +110,9 @@ onUnmounted(() => {
   }
   handleMouseUp();
 });
+
+/* 模板 ref 标记 */
+void containerRef.value;
 </script>
 
 <style scoped>
@@ -174,7 +178,6 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-
   0%,
   100% {
     opacity: 0.6;

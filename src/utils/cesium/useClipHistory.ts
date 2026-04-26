@@ -82,7 +82,6 @@ export function useClipHistory(positions: Ref<Cartesian3[]>) {
     pushHistory,
     undo,
     redo,
-    applyHistory,
     reset,
   };
 }

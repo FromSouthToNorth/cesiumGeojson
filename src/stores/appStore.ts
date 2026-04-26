@@ -8,7 +8,6 @@ import { defineStore } from 'pinia';
 
 export const useAppStore = defineStore('app', () => {
   const state = reactive({
-    theme: 'light',
     loading: false,
     loadingText: '加载中...',
   });

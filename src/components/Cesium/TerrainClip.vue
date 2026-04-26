@@ -1,5 +1,5 @@
 <!--
-  components/Cesium/TerrainClipDrawer.vue —— 地形裁切面板
+  components/Cesium/TerrainClip.vue —— 地形裁切面板
   提供绘制、编辑、管理裁切区域的 UI，与 terrainClipStore 绑定的协调器模式
 -->
 <template>
@@ -82,7 +82,7 @@ import { useTerrainClipStore } from '@/stores/terrainClipStore';
 import { Button, Space, Switch, Popconfirm } from 'ant-design-vue';
 import SidePanel from './SidePanel.vue';
 
-defineOptions({ name: 'TerrainClipDrawer' });
+defineOptions({ name: 'TerrainClip' });
 
 defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();

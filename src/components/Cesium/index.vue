@@ -10,14 +10,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import type { Viewer } from 'cesium';
 import { createViewer } from '@/utils/cesium';
 import { useCesiumStore } from '@/stores/cesiumStore';
 import Toolbox from './Toolbox.vue';
 import CesiumNavigation from './CesiumNavigation.vue';
 
-const { setViewer } = useCesiumStore();
+const { setViewer, clearViewer } = useCesiumStore();
 const cesiumContainer = ref<HTMLDivElement | null>(null);
 const viewer = ref<Viewer | null>(null);
 
@@ -26,6 +26,14 @@ onMounted(() => {
     viewer.value = createViewer(cesiumContainer.value);
     setViewer(viewer.value);
   }
+});
+
+onUnmounted(() => {
+  if (viewer.value && !viewer.value.isDestroyed()) {
+    viewer.value.destroy();
+  }
+  clearViewer();
+  viewer.value = null;
 });
 </script>
 

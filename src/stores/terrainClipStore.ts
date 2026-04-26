@@ -110,6 +110,9 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
       syncGlobeClipping();
       persistence.save();
     },
+    // 键盘快捷键：Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z 重做
+    onUndo: undo,
+    onRedo: redo,
   });
 
   /** 持久化 */

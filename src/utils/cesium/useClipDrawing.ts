@@ -3,6 +3,8 @@ import type { ComputedRef, Ref } from 'vue';
 import { Cartesian3, Color, HeightReference, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 import type { Viewer } from 'cesium';
 import { isValidViewer, pickGlobe } from './clipCommon';
+import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import type { ShortcutDef } from './useKeyboardShortcuts';
 
 /**
  * 绘制模式 composable
@@ -40,6 +42,24 @@ export function useClipDrawing(options: {
   // 顶点标记点 entity 数组
   let pointEntities: any[] = [];
 
+  /** 获取 viewer 实例，已判空和销毁检查 */
+  function getViewer(): Viewer | null {
+    const v = toRaw(viewer.value);
+    return isValidViewer(v) ? v : null;
+  }
+
+  /* ==============================
+   *  键盘快捷键
+   * ============================== */
+
+  const drawShortcuts: ShortcutDef[] = [
+    { key: 'Escape', handler: () => cancelDraw() },
+    { key: 'Backspace', handler: () => undoLastVertex() },
+    { key: 'Enter', handler: () => finishDraw() },
+  ];
+
+  const kb = useKeyboardShortcuts(drawShortcuts);
+
   /* ───────── 绘制控制 ───────── */
 
   /**
@@ -47,8 +67,8 @@ export function useClipDrawing(options: {
    * 注册鼠标事件：左键加点、左键双击撤销、右键结束绘制
    */
   function startDraw() {
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return;
+    const v = getViewer();
+    if (!v) return;
     if (isDrawing.value) return;
 
     // 清理旧的残留图形（安全防护）
@@ -59,8 +79,8 @@ export function useClipDrawing(options: {
 
     // 左键单击：在点击位置添加顶点，更新辅助图形
     handler.setInputAction((movement: any) => {
-      const v2 = toRaw(viewer.value);
-      if (!isValidViewer(v2)) return;
+      const v2 = getViewer();
+      if (!v2) return;
       const cartesian = pickGlobe(v2, movement.position);
       if (cartesian) {
         positions.value.push(Cartesian3.clone(cartesian));
@@ -70,8 +90,8 @@ export function useClipDrawing(options: {
 
     // 左键双击：距末点 < 5m 视为闭合完成，否则撤销上一个顶点
     handler.setInputAction((movement: any) => {
-      const v2 = toRaw(viewer.value);
-      if (!isValidViewer(v2)) return;
+      const v2 = getViewer();
+      if (!v2) return;
       const cartesian = pickGlobe(v2, movement.position);
       if (cartesian && positions.value.length > 0) {
         const dist = Cartesian3.distance(cartesian, positions.value[positions.value.length - 1]);
@@ -87,6 +107,8 @@ export function useClipDrawing(options: {
     handler.setInputAction(() => {
       finishDraw();
     }, ScreenSpaceEventType.RIGHT_CLICK);
+
+    kb.setup();
   }
 
   /**
@@ -94,13 +116,7 @@ export function useClipDrawing(options: {
    * 顶点 < 3 时触发 onCancel 回退，否则触发 onFinish
    */
   function finishDraw() {
-    isDrawing.value = false;
-    if (handler) {
-      handler.destroy();
-      handler = null;
-    }
-    clearDrawGraphics();
-
+    cleanupDraw();
     // 顶点不足 3 个，通过 onCancel 让 store 清理该区域
     if (positions.value.length < 3) {
       onCancel?.();
@@ -109,17 +125,23 @@ export function useClipDrawing(options: {
     onFinish?.();
   }
 
-  /**
-   * 取消绘制（用户主动取消）
-   * 清理图形并触发 onCancel，由 store 移除该区域
-   */
-  function cancelDraw() {
+  /** 清理绘制资源：销毁 handler、清除图形、重置状态 */
+  function cleanupDraw() {
     isDrawing.value = false;
     if (handler) {
       handler.destroy();
       handler = null;
     }
     clearDrawGraphics();
+    kb.teardown();
+  }
+
+  /**
+   * 取消绘制（用户主动取消）
+   * 清理图形并触发 onCancel，由 store 移除该区域
+   */
+  function cancelDraw() {
+    cleanupDraw();
     onCancel?.();
   }
 
@@ -137,8 +159,8 @@ export function useClipDrawing(options: {
    * 每次调用都会完全重建所有图形
    */
   function drawHelper() {
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return;
+    const v = getViewer();
+    if (!v) return;
 
     // 清除旧图形
     if (polylineEntity) {
@@ -180,8 +202,8 @@ export function useClipDrawing(options: {
 
   /** 清除绘制阶段的辅助图形 */
   function clearDrawGraphics() {
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return;
+    const v = getViewer();
+    if (!v) return;
     if (polylineEntity) {
       v.entities.remove(polylineEntity);
       polylineEntity = null;
@@ -194,12 +216,7 @@ export function useClipDrawing(options: {
 
   /** 销毁事件处理器并清除图形 */
   function destroy() {
-    if (handler) {
-      handler.destroy();
-      handler = null;
-    }
-    clearDrawGraphics();
-    isDrawing.value = false;
+    cleanupDraw();
   }
 
   return {

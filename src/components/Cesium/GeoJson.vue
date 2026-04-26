@@ -1,5 +1,5 @@
 <!--
-  components/Cesium/GeoJsonDrawer.vue —— GeoJSON 管理面板
+  components/Cesium/GeoJson.vue —— GeoJSON 管理面板
   上传 .geojson/.json 文件，自动解析并着色渲染，
   支持图层列表搜索、显隐、删除、要素属性查看
 -->
@@ -57,11 +57,9 @@
                     placement="topRight"
                     @confirm.stop="geoJsonStore.removeLayer(layer.id)"
                   >
-                    <Tooltip title="删除图层">
-                      <Button type="text" danger size="small" class="action-btn" @click.stop>
-                        <DeleteOutlined />
-                      </Button>
-                    </Tooltip>
+                    <Button type="text" danger size="small" class="action-btn" @click.stop>
+                      <DeleteOutlined />
+                    </Button>
                   </Popconfirm>
                 </div>
               </div>
@@ -156,7 +154,7 @@ import {
 } from '@ant-design/icons-vue';
 import SidePanel from './SidePanel.vue';
 
-defineOptions({ name: 'GeoJsonDrawer' });
+defineOptions({ name: 'GeoJson' });
 
 defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
