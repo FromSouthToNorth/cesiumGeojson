@@ -204,8 +204,12 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     activePolygonId.value = id;
   }
 
-  /** 删除多边形 */
+  /** 删除多边形（编辑中先退出编辑） */
   function removePolygon(id: string) {
+    if (isEditing.value && activePolygonId.value === id) {
+      editing.stopEdit();
+      isEditing.value = false;
+    }
     const polygon = polygons.value.find((p) => p.id === id);
     if (polygon) removePolygonEntity(polygon);
 
@@ -217,8 +221,12 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     }
   }
 
-  /** 清除所有多边形 */
+  /** 清除所有多边形（编辑中先退出编辑） */
   function clearAll() {
+    if (isEditing.value) {
+      editing.stopEdit();
+      isEditing.value = false;
+    }
     polygons.value.forEach((p) => removePolygonEntity(p));
     polygons.value = [];
     activePolygonId.value = null;

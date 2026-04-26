@@ -192,8 +192,12 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     activePathId.value = id;
   }
 
-  /** 删除路径 */
+  /** 删除路径（编辑中先退出编辑） */
   function removePath(id: string) {
+    if (isEditing.value && activePathId.value === id) {
+      editing.stopEdit();
+      isEditing.value = false;
+    }
     const path = paths.value.find((p) => p.id === id);
     if (path) removePathEntity(path);
 
@@ -206,8 +210,12 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     }
   }
 
-  /** 清除所有路径 */
+  /** 清除所有路径（编辑中先退出编辑） */
   function clearAll() {
+    if (isEditing.value) {
+      editing.stopEdit();
+      isEditing.value = false;
+    }
     paths.value.forEach((p) => removePathEntity(p));
     paths.value = [];
     expandedIds.value = [];
