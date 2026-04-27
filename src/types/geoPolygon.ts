@@ -3,6 +3,9 @@
  * 多边形地质勘测系统的核心数据模型
  * ============================== */
 
+/** 坡度分类 */
+export type SlopeCategory = 'gentle' | 'moderate' | 'steep';
+
 /** 多边形测量结果 */
 export interface GeoPolygonMeasureResult {
   /** 各边 geodesic 距离（m），包含闭合边 */
@@ -17,6 +20,7 @@ export interface GeoPolygonMeasureResult {
 export interface GeoPolygon {
   id: string;
   name: string;
+  description: string;
   color: string;
   show: boolean;
   positions: import('cesium').Cartesian3[];
@@ -41,7 +45,7 @@ export interface SlopeGridPoint {
   /** 坡度角度 (°) */
   angle: number;
   /** 坡度分类（基于角度，5°以下平缓，5-15°中等，15°以上陡峭） */
-  category: 'gentle' | 'moderate' | 'steep';
+  category: SlopeCategory;
 }
 
 /** 坡度分析结果 */
@@ -96,9 +100,11 @@ export interface GeoPolygonJSON {
     properties: {
       id: string;
       name: string;
+      description?: string;
       color: string;
       area: number;
       perimeter: number;
+      vertexElevations?: number[];
       clipping?: boolean;
       createdAt: number;
     };

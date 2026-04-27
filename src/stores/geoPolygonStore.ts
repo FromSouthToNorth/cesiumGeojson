@@ -150,6 +150,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     const polygon: GeoPolygon = {
       id: genId(),
       name: `${NAME_PREFIX} ${count}`,
+      description: '',
       color: pickColor(polygons.value.length),
       show: true,
       positions: [],
@@ -552,9 +553,11 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
           properties: {
             id: p.id,
             name: p.name,
+            description: p.description || undefined,
             color: p.color,
             area: p.measurements.area,
             perimeter: p.measurements.perimeter,
+            vertexElevations: p.vertexElevations?.length ? p.vertexElevations : undefined,
             clipping: p.clipping ?? false,
             createdAt: p.createdAt,
           },
@@ -632,10 +635,12 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       const polygon: GeoPolygon = {
         id: genId(),
         name: feature.properties?.name ?? `${NAME_PREFIX} ${polygons.value.length + 1}`,
+        description: feature.properties?.description ?? '',
         color: pickColor(polygons.value.length),
         show: true,
         positions: polyPositions,
         measurements: calcPolygonMeasure(polyPositions),
+        vertexElevations: feature.properties?.vertexElevations,
         createdAt: Date.now(),
         clipping: feature.properties?.clipping ?? false,
       };

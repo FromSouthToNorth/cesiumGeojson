@@ -129,123 +129,12 @@
             </div>
 
             <!-- 顶点坐标 -->
-            <div class="detail-section">
-              <div class="detail-title">
-                顶点坐标 ({{ store.vertexData.length }})
-                <Button size="small" type="link" class="copy-btn" @click.stop="copyVertices">复制</Button>
-                <Button size="small" type="link" class="copy-btn" @click.stop="store.exportVerticesCsv()">CSV</Button>
-              </div>
-              <div class="vertex-table-wrap">
-                <table class="vertex-table" @click.stop>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>经度</th>
-                      <th>纬度</th>
-                      <th>海拔</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(v, i) in store.vertexData" :key="i">
-                      <td>{{ i + 1 }}</td>
-                      <td>{{ v.lng.toFixed(5) }}</td>
-                      <td>{{ v.lat.toFixed(5) }}</td>
-                      <td>{{ v.elevation !== null ? `${v.elevation.toFixed(1)} m` : '-' }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <VertexTable :vertices="store.vertexData" />
 
             <!-- ── 坡度分析 ── -->
-            <div class="detail-section">
-              <div class="detail-title">空间坡度分析</div>
-
-              <template v-if="!store.slopeResult && !store.slopeLoading">
-                <Button size="small" @click.stop="store.analyzeSlope(poly.id)">
-                  开始坡度分析
-                </Button>
-                <p class="hint">在选区内生成网格采样点，分析坡度分布</p>
-              </template>
-
-              <template v-if="store.slopeLoading">
-                <div class="loading-hint">正在采样地形并计算坡度...</div>
-              </template>
-
-              <template v-if="store.slopeResult && !store.slopeLoading">
-                <div class="slope-grid">
-                  <div class="slope-stat">
-                    <span class="stat-label">平均坡度</span>
-                    <span class="stat-value">{{ store.slopeResult.avgSlope.toFixed(1) }}%</span>
-                    <span class="stat-angle">{{ store.slopeResult.avgAngle.toFixed(1) }}°</span>
-                  </div>
-                  <div class="slope-stat">
-                    <span class="stat-label">最小坡度</span>
-                    <span class="stat-value">{{ store.slopeResult.minSlope.toFixed(1) }}%</span>
-                    <span class="stat-angle">{{ store.slopeResult.minAngle.toFixed(1) }}°</span>
-                  </div>
-                  <div class="slope-stat">
-                    <span class="stat-label">最大坡度</span>
-                    <span class="stat-value">{{ store.slopeResult.maxSlope.toFixed(1) }}%</span>
-                    <span class="stat-angle">{{ store.slopeResult.maxAngle.toFixed(1) }}°</span>
-                  </div>
-                  <div class="slope-stat">
-                    <span class="stat-label">中位数</span>
-                    <span class="stat-value">{{ store.slopeResult.medianSlope.toFixed(1) }}%</span>
-                  </div>
-                  <div class="slope-stat">
-                    <span class="stat-label">标准差</span>
-                    <span class="stat-value">{{ store.slopeResult.stdDevSlope.toFixed(2) }}</span>
-                  </div>
-                  <div class="slope-stat">
-                    <span class="stat-label">采样点</span>
-                    <span class="stat-value">{{ store.slopeResult.sampleCount }}</span>
-                  </div>
-                </div>
-
-                <!-- 坡度分布条 -->
-                <div class="slope-dist-section">
-                  <div class="slope-dist-bar">
-                    <div class="slope-bar-seg gentle" :style="{ width: store.slopeResult.gentlePct + '%' }"
-                      :title="'平缓 ' + store.slopeResult.gentlePct.toFixed(0) + '%'"></div>
-                    <div class="slope-bar-seg moderate" :style="{ width: store.slopeResult.moderatePct + '%' }"
-                      :title="'中等 ' + store.slopeResult.moderatePct.toFixed(0) + '%'"></div>
-                    <div class="slope-bar-seg steep" :style="{ width: store.slopeResult.steepPct + '%' }"
-                      :title="'陡峭 ' + store.slopeResult.steepPct.toFixed(0) + '%'"></div>
-                  </div>
-                  <div class="slope-dist-labels">
-                    <span><span class="dot gentle"></span>平缓 {{ store.slopeResult.gentlePct.toFixed(0) }}%</span>
-                    <span><span class="dot moderate"></span>中等 {{ store.slopeResult.moderatePct.toFixed(0) }}%</span>
-                    <span><span class="dot steep"></span>陡峭 {{ store.slopeResult.steepPct.toFixed(0) }}%</span>
-                  </div>
-                </div>
-
-                <div class="slope-supplement">
-                  <span>高程起伏 {{ store.slopeResult.elevationRange.toFixed(0) }} m</span>
-                  <span>网格间距 {{ store.slopeResult.gridSpacing }} m</span>
-                  <span style="font-size: 11px; color: var(--surface-text-muted);">分级: &lt;5°平缓 / 5-15°中等 /
-                    ≥15°陡峭</span>
-                </div>
-
-                <!-- 图例 + 显隐切换 -->
-                <div class="slope-legend">
-                  <div class="legend-items">
-                    <span class="legend-item"><span class="legend-dot gentle"></span>平缓</span>
-                    <span class="legend-item"><span class="legend-dot moderate"></span>中等</span>
-                    <span class="legend-item"><span class="legend-dot steep"></span>陡峭</span>
-                  </div>
-                  <Button size="small" @click.stop="store.toggleSlopeGrid()">
-                    <template v-if="store.showSlopeGrid">隐藏网格</template>
-                    <template v-else>显示网格</template>
-                  </Button>
-                </div>
-
-                <Button size="small" @click.stop="store.analyzeSlope(poly.id)">
-                  <ReloadOutlined />
-                  重新分析
-                </Button>
-              </template>
-            </div>
+            <SlopeAnalysis :result="store.slopeResult" :loading="store.slopeLoading" :show-grid="store.showSlopeGrid"
+              @analyze="store.analyzeSlope(poly.id)" @toggle-grid="store.toggleSlopeGrid()"
+              @reanalyze="store.analyzeSlope(poly.id)" />
 
             <!-- 工具按钮 -->
             <div class="detail-tools">
@@ -276,23 +165,7 @@
       </div>
     </template>
 
-    <!-- ── 状态4：编辑中 ── -->
-    <template v-if="store.isEditing">
-      <Button type="primary" block @click="store.stopEdit()">
-        <CheckOutlined />
-        完成编辑
-      </Button>
-      <div class="edit-toolbar">
-        <Button size="small" :disabled="!store.canUndo" @click="store.undo()">撤销</Button>
-        <Button size="small" :disabled="!store.canRedo" @click="store.redo()">重做</Button>
-      </div>
-      <div class="editing-tip">
-        拖动顶点调整形状 · 点击线段添加顶点 · 右键顶点删除<br />
-        <kbd>Delete</kbd> 选中删除 · <kbd>Ctrl+Z</kbd> 撤销 · <kbd>Esc</kbd> 退出<br />
-        <span class="camera-lock-hint">编辑期间相机已锁定</span>
-      </div>
-      <div class="vertex-count">共 {{ store.positions.length }} 个顶点</div>
-    </template>
+    <EditToolbar :visible="store.isEditing" :can-undo="store.canUndo" :can-redo="store.canRedo" :vertex-count="store.positions.length" @finish="store.stopEdit()" @undo="store.undo()" @redo="store.redo()" />
   </SidePanel>
   <input ref="fileInput" type="file" accept=".geojson,.json" hidden @change="handleFileImport" />
 </template>
@@ -311,12 +184,13 @@ import {
   EyeInvisibleOutlined,
   DeleteOutlined,
   EditOutlined,
-  CheckOutlined,
-  ReloadOutlined,
   TagsOutlined,
   TagsFilled,
 } from '@ant-design/icons-vue';
 import SidePanel from './SidePanel.vue';
+import VertexTable from '../shared/VertexTable.vue';
+import SlopeAnalysis from '../shared/SlopeAnalysis.vue';
+import EditToolbar from '../shared/EditToolbar.vue';
 import { useGeoPolygonStore, formatArea, formatDist } from '@/stores/geoPolygonStore';
 import { calcPolygonMeasure } from '@/utils/cesium/usePolygonDrawing';
 
@@ -366,20 +240,6 @@ function handleFileImport(e: Event) {
   };
   reader.readAsText(file);
   target.value = '';
-}
-
-/* ── 顶点坐标复制 ── */
-function copyVertices() {
-  const data = store.vertexData;
-  if (!data.length) return;
-  const text = ['#\t经度\t纬度\t海拔',
-    ...data.map((v, i) =>
-      `${i + 1}\t${v.lng.toFixed(5)}\t${v.lat.toFixed(5)}\t${v.elevation !== null ? v.elevation.toFixed(1) : '-'}`),
-  ].join('\n');
-  navigator.clipboard.writeText(text).then(
-    () => message.success('顶点坐标已复制'),
-    () => message.error('复制失败'),
-  );
 }
 
 /* ── 绘制中实时信息 ── */
@@ -651,187 +511,6 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.edit-toolbar {
-  display: flex;
-  gap: 8px;
-}
-
-.editing-tip {
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.editing-tip kbd {
-  display: inline-block;
-  margin: 0 1px;
-  padding: 1px 5px;
-  border: 1px solid var(--panel-border);
-  border-radius: 3px;
-  background: var(--panel-surface);
-  font-family: inherit;
-  font-size: 11px;
-}
-
-.vertex-count {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.camera-lock-hint {
-  display: inline-block;
-  margin-top: 4px;
-  color: var(--warning-color, #faad14);
-  font-size: 11px;
-}
-
-/* ── 坡度分析 ── */
-
-.slope-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-
-.slope-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 4px 2px;
-  border: 1px solid var(--surface-border);
-  border-radius: 4px;
-}
-
-.slope-stat .stat-label {
-  color: var(--surface-text-muted);
-  font-size: 11px;
-}
-
-.slope-stat .stat-value {
-  color: var(--color-text);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.slope-stat .stat-angle {
-  color: var(--surface-text-muted);
-  font-size: 11px;
-  margin-left: 4px;
-}
-
-.slope-dist-section {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.slope-dist-bar {
-  display: flex;
-  height: 8px;
-  overflow: hidden;
-  border-radius: 4px;
-  background: var(--surface-bg-secondary, var(--surface-bg));
-}
-
-.slope-bar-seg {
-  transition: width 0.3s;
-}
-
-.slope-bar-seg.gentle {
-  background: #52C41A;
-}
-
-.slope-bar-seg.moderate {
-  background: #FAAD14;
-}
-
-.slope-bar-seg.steep {
-  background: #FF4D4F;
-}
-
-.slope-dist-labels {
-  display: flex;
-  justify-content: space-between;
-  color: var(--surface-text-muted);
-  font-size: 11px;
-}
-
-.slope-dist-labels .dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 4px;
-  border-radius: 50%;
-  vertical-align: middle;
-}
-
-.slope-dist-labels .dot.gentle {
-  background: #52C41A;
-}
-
-.slope-dist-labels .dot.moderate {
-  background: #FAAD14;
-}
-
-.slope-dist-labels .dot.steep {
-  background: #FF4D4F;
-}
-
-.slope-supplement {
-  display: flex;
-  justify-content: space-between;
-  color: var(--surface-text-muted);
-  font-size: 11px;
-}
-
-.loading-hint {
-  padding: 8px;
-  color: var(--surface-text-muted);
-  font-size: 12px;
-  text-align: center;
-}
-
-/* ── 坡度图例 ── */
-
-.slope-legend {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.legend-items {
-  display: flex;
-  gap: 10px;
-  font-size: 11px;
-  color: var(--surface-text-muted);
-}
-
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.legend-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.legend-dot.gentle {
-  background: #52C41A;
-}
-
-.legend-dot.moderate {
-  background: #FAAD14;
-}
-
-.legend-dot.steep {
-  background: #FF4D4F;
-}
 
 /* ── 汇总统计 ── */
 .stats-bar {
@@ -849,52 +528,6 @@ onUnmounted(() => {
 .stat-item {
   color: var(--color-text-secondary);
   white-space: nowrap;
-}
-
-/* ── 顶点表格 ── */
-.vertex-table-wrap {
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--surface-border);
-  border-radius: 4px;
-}
-
-.vertex-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-
-.vertex-table th,
-.vertex-table td {
-  padding: 3px 6px;
-  text-align: right;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.vertex-table th {
-  position: sticky;
-  top: 0;
-  background: var(--surface-bg-secondary, var(--surface-bg));
-  font-weight: 600;
-  color: var(--surface-text-muted);
-  text-align: right;
-  z-index: 1;
-}
-
-.vertex-table td:first-child,
-.vertex-table th:first-child {
-  text-align: center;
-}
-
-.vertex-table tr:last-child td {
-  border-bottom: none;
-}
-
-.copy-btn {
-  float: right;
-  padding: 0 4px;
-  font-size: 11px;
 }
 
 /* ── 详情工具按钮 ── */

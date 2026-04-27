@@ -29,20 +29,26 @@ src/
 ├── components/Cesium/         # Map-related components
 │   ├── index.vue              # Cesium container (creates Viewer)
 │   ├── Toolbox.vue            # Floating toolbar (GeoJSON / clip / point / geoPath / geoPolygon)
-│   ├── SidePanel.vue          # Shared slide-in panel (glassmorphism)
-│   ├── GeoJson.vue           # GeoJSON upload & layer management
-│   ├── TerrainClip.vue       # Terrain clipping panel
-│   ├── PointCreator.vue       # Observation point creator
-│   ├── GeoPath.vue           # Geological path planning & measurement
-│   ├── GeoPolygon.vue        # Polygon geological survey (area & perimeter)
 │   ├── CesiumNavigation.vue   # Theme toggle / zoom / home / compass
-│   └── Compass.vue            # Draggable compass widget
+│   ├── Compass.vue            # Draggable compass widget
+│   ├── panels/                # Side panel tools
+│   │   ├── SidePanel.vue      # Shared slide-in panel (glassmorphism)
+│   │   ├── GeoJson.vue        # GeoJSON upload & layer management
+│   │   ├── TerrainClip.vue    # Terrain clipping panel
+│   │   ├── PointCreator.vue   # Observation point creator
+│   │   ├── GeoPath.vue        # Geological path planning & measurement
+│   │   └── GeoPolygon.vue     # Polygon geological survey (area & perimeter, slope, clipping)
+│   └── shared/                # Reusable sub-components
+│       ├── ElevationProfile.vue # Path elevation profile chart
+│       ├── VertexTable.vue     # Generic vertex coordinate table
+│       ├── SlopeAnalysis.vue   # Slope analysis (stats, distribution, legend)
+│       └── EditToolbar.vue     # Shared editor toolbar (finish/undo/redo)
 ├── stores/                    # Pinia stores
 │   ├── cesiumStore.ts         # Viewer singleton
 │   ├── geojsonStore.ts        # GeoJSON layer CRUD
 │   ├── terrainClipStore.ts    # Terrain clipping coordinator (composes 4 sub-modules)
 │   ├── geoPathStore.ts        # Geological path CRUD, drawing, measurement
-│   ├── geoPolygonStore.ts     # Multi-polygon CRUD, drawing, area/perimeter, GeoJSON export
+│   ├── geoPolygonStore.ts     # Multi-polygon CRUD, drawing, area/perimeter, slope analysis, terrain clipping, GeoJSON export
 │   ├── themeStore.ts          # Light/dark theme (localStorage persisted)
 │   └── appStore.ts            # Global loading state
 ├── types/
@@ -62,7 +68,8 @@ src/
 │   │   ├── usePathMeasure.ts  # Geodesic distance calculation
 │   │   ├── usePathProfile.ts  # Terrain elevation profile sampling & stats
 │   │   ├── usePolygonDrawing.ts # Polygon drawing & area/perimeter measurement
-│   │   └── usePolygonEditing.ts # Polygon vertex editing (drag/add/delete, closed polygon)
+│   │   ├── usePolygonEditing.ts # Polygon vertex editing (drag/add/delete, closed polygon)
+│   │   └── usePolygonSlope.ts   # Terrain slope analysis (Horn algorithm, grid sampling)
 │   └── geojson/index.ts       # GeoJSON coordinate inspection
 ├── views/Home.vue
 ├── layouts/index.vue
@@ -111,6 +118,7 @@ src/
 - `data-theme="light|dark"` on `<html>` controls CSS variable sets
 - Ant Design theme syncs via `ConfigProvider` with `theme.darkAlgorithm` / `theme.defaultAlgorithm`
 - Theme choice persisted in localStorage key `cesium-theme`
+- **Slope classification colors** defined as CSS custom properties in `src/style.css`: `--slope-gentle` (#52c41a), `--slope-moderate` (#faad14), `--slope-steep` (#ff4d4f). Reference via `var(--slope-*)` in scoped CSS; JS rendering contexts (SVG, Cesium Color) still use hardcoded string literals
 
 ### Terrain Clip Architecture
 
@@ -181,15 +189,18 @@ Key details:
 
 ### GeoPolygon Architecture
 
-Polygon geological survey follows the same **coordinator pattern**:
+Polygon geological survey uses a coordinator store with drawing, editing, slope analysis, and terrain clipping:
 
 ```
-geoPolygonStore (coordinator: multi-polygon CRUD, drawing, editing, entity management)
+geoPolygonStore (coordinator: multi-polygon CRUD, drawing, editing, entity management, slope analysis, terrain clipping)
 ├── usePolygonDrawing    — Polygon drawing: left-click add, right-click finish, Backspace undo
 │   └── useKeyboardShortcuts  — Escape/Backspace/Enter
 ├── usePolygonEditing    — Polygon vertex editing: drag, midpoint add, right-click delete
 │   └── useKeyboardShortcuts  — Escape/Enter, Delete/Backspace, Ctrl/Cmd+Z/Y
-└── useClipHistory       — Undo/redo stack (30 snapshots of Cartesian3[])
+├── useClipHistory       — Undo/redo stack (30 snapshots of Cartesian3[])
+├── usePolygonSlope      — Terrain slope analysis with Horn algorithm (standalone async function)
+├── syncPolygonClipping  — Built-in per-polygon terrain clipping via ClippingPolygonCollection
+└── toggleClippingInverse — Inverse clipping mode (show outside polygon)
 ```
 
 Key details:
@@ -204,7 +215,30 @@ Key details:
 - **Vertex data**: Expanded detail shows vertex table with lng/lat/height/elevation. Supports copy to clipboard and CSV export.
 - **Vertex elevation**: Terrain elevation sampled at each vertex via Cesium `sampleTerrain()` on finishDraw and after editing.
 - **Colors**: 8-color cycle (same as geoPath).
-- **GeoJSON import/export**: FeatureCollection with closed-ring Polygon geometry. Import supports `.geojson` / `.json` files via file picker.
+- **GeoJSON import/export**: FeatureCollection with closed-ring Polygon geometry. Clipping state persisted in properties. Import supports `.geojson` / `.json` files via file picker.
+
+#### Slope Analysis (`usePolygonSlope.ts`)
+
+Standalone async analysis using the **Horn (1981) algorithm**:
+
+1. Generate a regular grid inside the polygon bounding box (up to 300×300, ~20000 sample points)
+2. Sample terrain heights via `sampleTerrain(provider, level=13, cartos)`
+3. Compute slope with 3×3 Horn window: `slope = sqrt(dx² + dy²)` where dx/dy are weighted elevation gradients
+4. Report both **percent slope** and **angle (°)**: `angle = atan(slopeVal) × 180/π`
+5. Classification thresholds: `< 5°` gentle (green), `5-15°` moderate (yellow), `≥ 15°` steep (red)
+6. Returns per-point `SlopeGridPoint[]` with lon/lat/height/slope/angle/category for map coloring
+
+**Important**: Cartographic lon/lat is in **radians** — when computing bounding box dimensions in meters, multiply by `180/π` to convert degrees to meters. See `usePolygonSlope.ts` for details.
+
+#### Terrain Clipping
+
+Per-polygon terrain clipping toggleable from the detail panel:
+- `poly.clipping` — boolean field on GeoPolygon, persisted in GeoJSON export/import
+- `toggleClipping(id)` — enable/disable clipping for a polygon (min 3 vertices required)
+- `syncPolygonClipping()` — collects all clipping-enabled polygons, creates `ClippingPolygonCollection` on `scene.globe.clippingPolygons`
+- `clippingInverse` — global toggle to show terrain **outside** the polygon instead of inside (red highlight when active)
+- Inverse button disabled when no polygon has clipping enabled
+- Only one `ClippingPolygonCollection` can be active on the globe — conflicts with `terrainClipStore` if both used simultaneously
 
 ### Coding Style
 - Files start with `/* ===== Header ===== */` describing file responsibility (in Chinese for domain code, English for infra)

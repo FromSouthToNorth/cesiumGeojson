@@ -50,21 +50,36 @@ defineEmits<{
   border-radius: 10px;
   background: var(--surface-bg);
   backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px var(--surface-shadow);
 }
 
 .panel-header {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--surface-header-border, var(--surface-border));
+}
+
+.panel-header::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 18px;
+  content: '';
+  background: var(--color-primary);
+  border-radius: 0 2px 2px 0;
+  transform: translateY(-50%);
 }
 
 .panel-title {
   color: var(--color-text);
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .panel-close {
@@ -74,11 +89,18 @@ defineEmits<{
   width: 28px;
   height: 28px;
   color: var(--surface-text-muted);
+  border-radius: 6px;
+  transition: all 0.2s ease;
 }
 
 .panel-close:hover {
   background: var(--surface-hover);
   color: var(--color-text);
+  transform: scale(1.1);
+}
+
+.panel-close:active {
+  transform: scale(0.95);
 }
 
 .panel-body {
@@ -87,15 +109,41 @@ defineEmits<{
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
-  padding: 14px;
+  padding: 14px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-border) transparent;
 }
 
-.panel-enter-active,
+.panel-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--surface-border);
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-text-muted);
+}
+
+.panel-enter-active {
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .panel-leave-active {
-  transition: all 0.2s ease;
+  transition: all 0.18s ease;
 }
 
-.panel-enter-from,
+.panel-enter-from {
+  opacity: 0;
+  transform: translateX(-12px) scale(0.98);
+}
+
 .panel-leave-to {
   opacity: 0;
   transform: translateX(-8px);

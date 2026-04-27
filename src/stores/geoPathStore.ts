@@ -89,6 +89,20 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   /** 展开的路径 ID 列表（UI 状态） */
   const expandedIds = ref<string[]>([]);
 
+  /** 当前选中路径的顶点坐标数据 */
+  const vertexData = computed(() => {
+    const path = activePath.value;
+    if (!path) return [];
+    return path.positions.map((pos) => {
+      const carto = Cartographic.fromCartesian(pos);
+      return {
+        lng: toDeg(carto.longitude),
+        lat: toDeg(carto.latitude),
+        height: carto.height ?? 0,
+      };
+    });
+  });
+
   /* ==============================
    *  绘制 composable
    * ============================== */
@@ -536,6 +550,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     // computed
     activePath,
     hasPaths,
+    vertexData,
     // path CRUD
     startDraw,
     cancelDraw,

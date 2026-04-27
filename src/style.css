@@ -4,6 +4,7 @@
   /* Surfaces */
   --surface-bg: rgba(255, 255, 255, 0.88);
   --surface-border: rgba(0, 0, 0, 0.1);
+  --surface-shadow: rgba(0, 0, 0, 0.06);
   --surface-text: rgba(0, 0, 0, 0.75);
   --surface-text-muted: rgba(0, 0, 0, 0.35);
   --surface-hover: rgba(0, 0, 0, 0.06);
@@ -33,11 +34,17 @@
   --color-danger: #ff4d4f;
   --color-text: #262626;
   --color-text-secondary: #8c8c8c;
+
+  /* Slope classification */
+  --slope-gentle: #52c41a;
+  --slope-moderate: #faad14;
+  --slope-steep: #ff4d4f;
 }
 
 [data-theme='dark'] {
   --surface-bg: rgba(30, 30, 40, 0.88);
   --surface-border: rgba(255, 255, 255, 0.12);
+  --surface-shadow: rgba(0, 0, 0, 0.3);
   --surface-text: rgba(255, 255, 255, 0.75);
   --surface-text-muted: rgba(255, 255, 255, 0.35);
   --surface-hover: rgba(255, 255, 255, 0.1);
