@@ -84,7 +84,7 @@
 <script setup lang="ts">
 import { useTerrainClipStore } from '@/stores/terrainClipStore';
 import { Button, Space, Popconfirm } from 'ant-design-vue';
-import SidePanel from './SidePanel.vue';
+import { SidePanel } from '.';
 
 defineOptions({ name: 'TerrainClip' });
 

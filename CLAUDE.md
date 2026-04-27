@@ -88,6 +88,7 @@ src/
 - All tool panels follow the same pattern: wrapped in SidePanel with Space vertical layout
 - Scoped styles only; use CSS custom properties (`var(--xxx)`) for theming
 - Icon imports: `import { XxxOutlined } from '@ant-design/icons-vue'`
+- Components organized into `panels/` (tool panels) and `shared/` (reusable sub-components), each with `index.ts` barrel exports. Cross-directory imports use the barrel: `import { SidePanel } from '.'`, `import { VertexTable } from '../shared'`
 
 ### Pinia Stores
 - Composition API style: `defineStore('name', () => { ... })`

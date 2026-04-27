@@ -152,7 +152,7 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
 } from '@ant-design/icons-vue';
-import SidePanel from './SidePanel.vue';
+import { SidePanel } from '.';
 
 defineOptions({ name: 'GeoJson' });
 

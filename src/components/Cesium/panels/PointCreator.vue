@@ -79,7 +79,7 @@ import { EnvironmentOutlined, AimOutlined, CloseOutlined, ZoomInOutlined, MoreOu
 import { useCesiumStore } from '@/stores/cesiumStore';
 import { Cartesian3, Cartographic, sampleTerrain, HeadingPitchRange, Math as CesiumMath, Matrix4, Color } from 'cesium';
 import type { Viewer, Entity } from 'cesium';
-import SidePanel from './SidePanel.vue';
+import { SidePanel } from '.';
 
 defineOptions({ name: 'PointCreator' });
 

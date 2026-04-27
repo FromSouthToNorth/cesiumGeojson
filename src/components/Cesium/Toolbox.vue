@@ -66,11 +66,7 @@
 import { ref } from 'vue';
 import { Button, Tooltip } from 'ant-design-vue';
 import { AppstoreOutlined, FileTextOutlined, ScissorOutlined, EnvironmentOutlined, NodeIndexOutlined, AuditOutlined } from '@ant-design/icons-vue';
-import GeoJson from './panels/GeoJson.vue';
-import TerrainClip from './panels/TerrainClip.vue';
-import PointCreator from './panels/PointCreator.vue';
-import GeoPath from './panels/GeoPath.vue';
-import GeoPolygon from './panels/GeoPolygon.vue';
+import { GeoJson, TerrainClip, PointCreator, GeoPath, GeoPolygon } from './panels';
 
 defineOptions({ name: 'Toolbox' });
 

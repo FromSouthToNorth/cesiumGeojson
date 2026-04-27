@@ -187,10 +187,8 @@ import {
   TagsOutlined,
   TagsFilled,
 } from '@ant-design/icons-vue';
-import SidePanel from './SidePanel.vue';
-import VertexTable from '../shared/VertexTable.vue';
-import SlopeAnalysis from '../shared/SlopeAnalysis.vue';
-import EditToolbar from '../shared/EditToolbar.vue';
+import { SidePanel } from '.';
+import { VertexTable, SlopeAnalysis, EditToolbar } from '../shared';
 import { useGeoPolygonStore, formatArea, formatDist } from '@/stores/geoPolygonStore';
 import { calcPolygonMeasure } from '@/utils/cesium/usePolygonDrawing';
 

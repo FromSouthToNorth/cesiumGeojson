@@ -200,10 +200,8 @@ import {
   StopOutlined,
   FastBackwardOutlined,
 } from '@ant-design/icons-vue';
-import SidePanel from './SidePanel.vue';
-import ElevationProfile from '../shared/ElevationProfile.vue';
-import VertexTable from '../shared/VertexTable.vue';
-import EditToolbar from '../shared/EditToolbar.vue';
+import { SidePanel } from '.';
+import { ElevationProfile, VertexTable, EditToolbar } from '../shared';
 import { useGeoPathStore } from '@/stores/geoPathStore';
 import { calcPathDistances } from '@/utils/cesium/usePathMeasure';
 
