@@ -13,24 +13,38 @@ import {
   Cartesian3,
   Color,
   HeightReference,
+  KeyboardEventModifier,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   Cartographic,
   Ellipsoid,
   EllipsoidGeodesic,
 } from 'cesium';
-import type { Viewer } from 'cesium';
-import { isValidViewer, pickGlobe } from './clipCommon';
-import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import type { ShortcutDef } from './useKeyboardShortcuts';
+import type { Viewer, Cartesian2 } from 'cesium';
+import { isValidViewer, pickGlobe } from '../shared/common';
+import { useKeyboardShortcuts } from '../shared/useKeyboardShortcuts';
+import type { ShortcutDef } from '../shared/useKeyboardShortcuts';
 import type { GeoPolygonMeasureResult } from '@/types/geoPolygon';
+import type { SnapTarget } from '../shared/useSnapping';
+
+export interface PolygonSnappingAPI {
+  findSnapTarget: (
+    screenPos: Cartesian2,
+    worldPos: Cartesian3,
+    exclude?: Cartesian3[],
+    disableSnap?: boolean,
+  ) => SnapTarget | null;
+  setup: () => void;
+  teardown: () => void;
+  invalidateCache: () => void;
+}
 
 /** 计算多边形周长和面积 */
-export function calcPolygonMeasure(positions: import('cesium').Cartesian3[]): GeoPolygonMeasureResult {
+export function calcPolygonMeasure(positions: Cartesian3[]): GeoPolygonMeasureResult {
   const n = positions.length;
   if (n < 3) return { segments: [], perimeter: 0, area: 0 };
 
-  const cartos = new Array<import('cesium').Cartographic>(n);
+  const cartos = new Array<Cartographic>(n);
   for (let i = 0; i < n; i++) {
     cartos[i] = Cartographic.fromCartesian(positions[i]);
   }
@@ -57,7 +71,7 @@ export function calcPolygonMeasure(positions: import('cesium').Cartesian3[]): Ge
     const avgLat = (cartos[i].latitude + cartos[j].latitude) / 2;
     areaSum += dLon * Math.sin(avgLat);
   }
-  const area = Math.abs(areaSum) * R * R / 2;
+  const area = (Math.abs(areaSum) * R * R) / 2;
 
   return { segments, perimeter, area };
 }
@@ -72,9 +86,19 @@ export function usePolygonDrawing(options: {
   onCancel?: () => void;
   /** 实时更新回调（周长, 面积） */
   onLiveUpdate?: (perimeter: number, area: number) => void;
+  /** 吸附功能 */
+  snapping?: PolygonSnappingAPI;
 }) {
   const { viewer, positions, color: colorStr = '#1890FF', onFinish, onCancel, onLiveUpdate } = options;
+  const { snapping } = options;
   const isDrawing = ref(false);
+
+  // Shift 键状态（临时禁用吸附）
+  let shiftPressed = false;
+
+  // Shift 键状态通过原生键盘事件跟踪（Cesium ScreenSpaceEventHandler 不提供 shiftKey）
+  let onKeyDownShift: ((e: KeyboardEvent) => void) | null = null;
+  let onKeyUpShift: ((e: KeyboardEvent) => void) | null = null;
 
   let handler: ScreenSpaceEventHandler | null = null;
   let previewPos: import('cesium').Cartesian3 | null = null;
@@ -114,6 +138,20 @@ export function usePolygonDrawing(options: {
     onLiveUpdate(previewPerimeter, result.area);
   }
 
+  /**
+   * 吸附辅助函数：将地形坐标与吸附目标比较，返回吸附后坐标
+   * @param disableSnap - 临时禁用（如 Shift 键按下）
+   */
+  function applySnapping(
+    screenPos: import('cesium').Cartesian2,
+    worldPos: import('cesium').Cartesian3,
+    disableSnap = false,
+  ): import('cesium').Cartesian3 {
+    if (!snapping) return worldPos;
+    const target = snapping.findSnapTarget(screenPos, worldPos, positions.value, disableSnap);
+    return target ? target.position : worldPos;
+  }
+
   /* ==============================
    *  键盘快捷键
    * ============================== */
@@ -136,22 +174,55 @@ export function usePolygonDrawing(options: {
     clearDrawGraphics();
     positions.value.length = 0;
     previewPos = null;
+    shiftPressed = false;
     isDrawing.value = true;
+    v.canvas.style.cursor = 'crosshair';
+
+    // 通过原生键盘事件跟踪 Shift 状态
+    onKeyDownShift = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') shiftPressed = true;
+    };
+    onKeyUpShift = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') shiftPressed = false;
+    };
+    window.addEventListener('keydown', onKeyDownShift);
+    window.addEventListener('keyup', onKeyUpShift);
 
     handler = new ScreenSpaceEventHandler(v.canvas);
 
-    // 左键单击：添加顶点
+    // 左键单击：添加顶点（无修饰键）
     handler.setInputAction((movement: any) => {
       const v2 = getViewer();
       if (!v2) return;
       const cartesian = pickGlobe(v2, movement.position);
       if (cartesian) {
-        positions.value.push(Cartesian3.clone(cartesian));
+        const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
+        positions.value.push(Cartesian3.clone(finalPos));
+        snapping?.invalidateCache();
         previewPos = null;
         drawHelper();
         emitLiveUpdate();
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
+
+    // Shift + 左键单击：同样需要添加顶点
+    handler.setInputAction(
+      (movement: any) => {
+        const v2 = getViewer();
+        if (!v2) return;
+        const cartesian = pickGlobe(v2, movement.position);
+        if (cartesian) {
+          const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
+          positions.value.push(Cartesian3.clone(finalPos));
+          snapping?.invalidateCache();
+          previewPos = null;
+          drawHelper();
+          emitLiveUpdate();
+        }
+      },
+      ScreenSpaceEventType.LEFT_CLICK,
+      KeyboardEventModifier.SHIFT,
+    );
 
     // 鼠标移动：预览
     handler.setInputAction((movement: any) => {
@@ -160,9 +231,12 @@ export function usePolygonDrawing(options: {
       if (!v2) return;
       const cartesian = pickGlobe(v2, movement.endPosition);
       if (cartesian) {
-        previewPos = cartesian;
-        updatePreview(cartesian);
+        const finalPos = applySnapping(movement.endPosition, cartesian, shiftPressed);
+        previewPos = finalPos;
+        updatePreview(finalPos);
         emitLiveUpdate();
+        // 光标反馈：吸附时显示 copy 指针（Shift 禁用时不显示）
+        v2.canvas.style.cursor = !shiftPressed && finalPos !== cartesian ? 'copy' : 'crosshair';
       }
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
@@ -171,21 +245,42 @@ export function usePolygonDrawing(options: {
       finishDraw();
     }, ScreenSpaceEventType.RIGHT_CLICK);
 
-    // 左键双击：完成绘制
+    // 左键双击：完成绘制（无修饰键）
     handler.setInputAction((movement: any) => {
       if (positions.value.length < 3) return;
       const v2 = getViewer();
       if (!v2) return;
       const cartesian = pickGlobe(v2, movement.position);
       if (cartesian) {
+        const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
         const last = positions.value[positions.value.length - 1];
-        if (Cartesian3.distance(cartesian, last) < 5) {
+        if (Cartesian3.distance(finalPos, last) < 5) {
           finishDraw();
         }
       }
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
+    // Shift + 左键双击：同样需要完成绘制
+    handler.setInputAction(
+      (movement: any) => {
+        if (positions.value.length < 3) return;
+        const v2 = getViewer();
+        if (!v2) return;
+        const cartesian = pickGlobe(v2, movement.position);
+        if (cartesian) {
+          const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
+          const last = positions.value[positions.value.length - 1];
+          if (Cartesian3.distance(finalPos, last) < 5) {
+            finishDraw();
+          }
+        }
+      },
+      ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
+      KeyboardEventModifier.SHIFT,
+    );
+
     kb.setup();
+    snapping?.setup();
   }
 
   /** 完成绘制 */
@@ -212,6 +307,7 @@ export function usePolygonDrawing(options: {
   function undoLastVertex() {
     if (positions.value.length === 0) return;
     positions.value.pop();
+    snapping?.invalidateCache();
     previewPos = null;
     drawHelper();
     emitLiveUpdate();
@@ -354,12 +450,24 @@ export function usePolygonDrawing(options: {
   /** 清理绘制资源 */
   function cleanupDraw() {
     isDrawing.value = false;
+    shiftPressed = false;
     if (handler) {
       handler.destroy();
       handler = null;
     }
+    if (onKeyDownShift) {
+      window.removeEventListener('keydown', onKeyDownShift);
+      onKeyDownShift = null;
+    }
+    if (onKeyUpShift) {
+      window.removeEventListener('keyup', onKeyUpShift);
+      onKeyUpShift = null;
+    }
     clearDrawGraphics();
     kb.teardown();
+    snapping?.teardown();
+    const v = getViewer();
+    if (v) v.canvas.style.cursor = 'default';
   }
 
   /* ==============================

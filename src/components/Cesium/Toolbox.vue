@@ -14,6 +14,7 @@
           <Button
             class="tool-btn"
             :type="activeTool === 'geojson' ? 'primary' : 'default'"
+            aria-label="GeoJSON 管理"
             @click="toggleTool('geojson')"
           >
             <FileTextOutlined />
@@ -23,7 +24,12 @@
 
       <div class="toolbox-group">
         <Tooltip title="地形裁切" placement="right">
-          <Button class="tool-btn" :type="activeTool === 'clip' ? 'primary' : 'default'" @click="toggleTool('clip')">
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'clip' ? 'primary' : 'default'"
+            aria-label="地形裁切"
+            @click="toggleTool('clip')"
+          >
             <ScissorOutlined />
           </Button>
         </Tooltip>
@@ -31,7 +37,12 @@
 
       <div class="toolbox-group">
         <Tooltip title="添加观测点" placement="right">
-          <Button class="tool-btn" :type="activeTool === 'point' ? 'primary' : 'default'" @click="toggleTool('point')">
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'point' ? 'primary' : 'default'"
+            aria-label="添加观测点"
+            @click="toggleTool('point')"
+          >
             <EnvironmentOutlined />
           </Button>
         </Tooltip>
@@ -39,7 +50,12 @@
 
       <div class="toolbox-group">
         <Tooltip title="地质路径" placement="right">
-          <Button class="tool-btn" :type="activeTool === 'geoPath' ? 'primary' : 'default'" @click="toggleTool('geoPath')">
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'geoPath' ? 'primary' : 'default'"
+            aria-label="地质路径"
+            @click="toggleTool('geoPath')"
+          >
             <NodeIndexOutlined />
           </Button>
         </Tooltip>
@@ -47,7 +63,12 @@
 
       <div class="toolbox-group">
         <Tooltip title="多边形勘测" placement="right">
-          <Button class="tool-btn" :type="activeTool === 'geoPolygon' ? 'primary' : 'default'" @click="toggleTool('geoPolygon')">
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'geoPolygon' ? 'primary' : 'default'"
+            aria-label="多边形勘测"
+            @click="toggleTool('geoPolygon')"
+          >
             <AuditOutlined />
           </Button>
         </Tooltip>
@@ -65,7 +86,14 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { Button, Tooltip } from 'ant-design-vue';
-import { AppstoreOutlined, FileTextOutlined, ScissorOutlined, EnvironmentOutlined, NodeIndexOutlined, AuditOutlined } from '@ant-design/icons-vue';
+import {
+  AppstoreOutlined,
+  FileTextOutlined,
+  ScissorOutlined,
+  EnvironmentOutlined,
+  NodeIndexOutlined,
+  AuditOutlined,
+} from '@ant-design/icons-vue';
 import { GeoJson, TerrainClip, PointCreator, GeoPath, GeoPolygon } from './panels';
 
 defineOptions({ name: 'Toolbox' });
@@ -87,7 +115,7 @@ function onPanelClose(visible: boolean) {
   position: absolute;
   top: 12px;
   left: 12px;
-  z-index: 10;
+  z-index: 100;
   display: flex;
 }
 
@@ -97,7 +125,7 @@ function onPanelClose(visible: boolean) {
   flex-shrink: 0;
   align-items: center;
   gap: 4px;
-  width: 48px;
+  width: 56px;
   padding: 8px 6px;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
@@ -132,8 +160,8 @@ function onPanelClose(visible: boolean) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1px solid var(--nav-btn-border);
   border-radius: 6px;

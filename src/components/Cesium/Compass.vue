@@ -5,8 +5,17 @@
 -->
 <template>
   <div ref="containerRef" class="compass-container">
-    <div class="compass" :style="{ transform: `rotate(${heading}deg)` }" @mousedown.prevent="handleMouseDown"
-      @dblclick.prevent="handleDoubleClick">
+    <div
+      class="compass"
+      role="button"
+      tabindex="0"
+      aria-label="罗盘，按 Enter 复位正北，左右方向键旋转"
+      :style="{ transform: `rotate(${heading}deg)` }"
+      @mousedown.prevent="handleMouseDown"
+      @touchstart.prevent="handleTouchStart"
+      @dblclick.prevent="handleDoubleClick"
+      @keydown="handleKeydown"
+    >
       <svg viewBox="0 0 100 100" class="compass-svg">
         <circle cx="50" cy="50" r="48" class="compass-circle" stroke-width="2" />
         <polygon points="50,10 55,50 50,45 45,50" class="compass-north" />
@@ -16,8 +25,10 @@
     </div>
     <div v-if="isDragging" class="compass-indicator">
       <svg viewBox="0 0 24 24" class="drag-icon">
-        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
-          fill="currentColor" />
+        <path
+          d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"
+          fill="currentColor"
+        />
       </svg>
     </div>
   </div>
@@ -58,6 +69,24 @@ function handleDoubleClick() {
   });
 }
 
+/** 键盘操作：Enter 复位，左右方向键旋转 */
+function handleKeydown(e: KeyboardEvent) {
+  const v = toRaw(cesiumStore.viewer);
+  if (!v) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    handleDoubleClick();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    v.scene.camera.twistLeft(0.1);
+    updateHeading();
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    v.scene.camera.twistRight(0.1);
+    updateHeading();
+  }
+}
+
 /** 开始拖拽：注册全局 mouse 事件 */
 function handleMouseDown(e: MouseEvent) {
   e.stopPropagation();
@@ -87,6 +116,40 @@ function handleMouseUp(e?: MouseEvent) {
   isDragging.value = false;
   document.removeEventListener('mousemove', handleMouseMove);
   document.removeEventListener('mouseup', handleMouseUp);
+  document.removeEventListener('touchmove', handleTouchMove);
+  document.removeEventListener('touchend', handleTouchEnd);
+}
+
+/** 开始触摸拖拽 */
+function handleTouchStart(e: TouchEvent) {
+  e.stopPropagation();
+  e.preventDefault();
+  isDragging.value = true;
+  startX = e.touches[0].clientX;
+  currentX = startX;
+
+  document.addEventListener('touchmove', handleTouchMove, { passive: false });
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+/** 触摸拖拽中 */
+function handleTouchMove(e: TouchEvent) {
+  if (!isDragging.value) return;
+  e.preventDefault();
+  const deltaX = e.touches[0].clientX - currentX;
+  currentX = e.touches[0].clientX;
+  const v = toRaw(cesiumStore.viewer);
+  if (!v) return;
+  v.scene.camera.twistLeft(deltaX * 0.005);
+  updateHeading();
+}
+
+/** 触摸拖拽结束 */
+function handleTouchEnd(e: TouchEvent) {
+  e.stopPropagation();
+  isDragging.value = false;
+  document.removeEventListener('touchmove', handleTouchMove);
+  document.removeEventListener('touchend', handleTouchEnd);
 }
 
 let animationId: number | null = null;
@@ -128,6 +191,12 @@ void containerRef.value;
 
 .compass-container:active {
   cursor: grabbing;
+}
+
+.compass:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid var(--color-primary, #1890ff);
+  outline-offset: 2px;
 }
 
 .compass {
@@ -185,6 +254,13 @@ void containerRef.value;
 
   50% {
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-icon {
+    opacity: 0.8;
+    animation: none;
   }
 }
 </style>

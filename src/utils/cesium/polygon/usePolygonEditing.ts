@@ -1,12 +1,19 @@
 /* ==============================
- * Path Editing Composable
- * 开放折线顶点编辑：拖拽、添加、删除顶点
+ * Polygon Editing Composable
+ * 闭合多边形顶点编辑：拖拽、添加、删除顶点
  *
- * 与 usePolygonEditing 的区别：
- *   - 无 fill polygon（折线不需要）
- *   - 折线不闭合（不加首点）
- *   - 中点 n-1 条边（无闭合边）
- *   - 最小顶点 2 个
+ * 交互：
+ *   LEFT_DOWN: 选中顶点拖拽开始
+ *   MOUSE_MOVE: 拖拽顶点 + 光标反馈
+ *   LEFT_UP: 释放顶点
+ *   LEFT_CLICK: 点击中点添加顶点
+ *   RIGHT_CLICK: 删除顶点
+ *
+ * 键盘：
+ *   Escape / Enter: 退出编辑
+ *   Delete / Backspace: 删除顶点
+ *   Ctrl/Cmd+Z: 撤销
+ *   Ctrl/Cmd+Shift+Z: 重做
  * ============================== */
 
 import { ref, toRaw } from 'vue';
@@ -14,13 +21,14 @@ import type { ComputedRef, Ref } from 'vue';
 import { Cartesian2, Cartesian3, Color, HeightReference, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 import type { Viewer } from 'cesium';
 import { message } from 'ant-design-vue';
-import { isValidViewer, pickGlobe } from './clipCommon';
-import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import type { ShortcutDef } from './useKeyboardShortcuts';
+import { isValidViewer, pickGlobe } from '../shared/common';
+import { useKeyboardShortcuts } from '../shared/useKeyboardShortcuts';
+import type { ShortcutDef } from '../shared/useKeyboardShortcuts';
 
-export function usePathEditing(options: {
+export function usePolygonEditing(options: {
   viewer: ComputedRef<Viewer | null>;
   positions: Ref<Cartesian3[]>;
+  /** 颜色 getter，每次 drawEditGraphics 时调用，确保使用最新颜色 */
   color?: () => string;
   onStart?: () => void;
   onChange?: () => void;
@@ -35,10 +43,13 @@ export function usePathEditing(options: {
 
   /* ── 编辑内部状态 ── */
   let editingHandler: ScreenSpaceEventHandler | null = null;
+  let editPolygonEntity: any = null;
   let editPolylineEntity: any = null;
   let editPointEntities: any[] = [];
   let editMidpointEntities: any[] = [];
   let dragState: { index: number } | null = null;
+  /** 拖拽刚结束时为 true，阻止 LEFT_CLICK 误触中点添加 */
+  let justDragged = false;
   let lastMousePos: Cartesian2 | null = null;
 
   function getViewer(): Viewer | null {
@@ -111,7 +122,14 @@ export function usePathEditing(options: {
     const v = getViewer();
     if (!v) return;
     const remove = (e: any) => v.entities.remove(e);
-    if (editPolylineEntity) { remove(editPolylineEntity); editPolylineEntity = null; }
+    if (editPolygonEntity) {
+      remove(editPolygonEntity);
+      editPolygonEntity = null;
+    }
+    if (editPolylineEntity) {
+      remove(editPolylineEntity);
+      editPolylineEntity = null;
+    }
     editPointEntities.forEach(remove);
     editPointEntities = [];
     editMidpointEntities.forEach(remove);
@@ -127,17 +145,26 @@ export function usePathEditing(options: {
     const n = pos.length;
     const color = Color.fromCssColorString(getColor());
 
-    // 折线边线（不闭合）
+    // 多边形半透明填充
+    editPolygonEntity = v.entities.add({
+      polygon: {
+        hierarchy: [...pos],
+        material: color.withAlpha(0.12),
+        heightReference: HeightReference.CLAMP_TO_GROUND,
+      },
+    });
+
+    // 多边形边线（闭合）
     editPolylineEntity = v.entities.add({
       polyline: {
-        positions: [...pos],
+        positions: [...pos, pos[0]],
         width: 2,
         material: color,
         clampToGround: true,
       },
     });
 
-    // 顶点标记
+    // 顶点标记（黄色 + 白色描边）
     pos.forEach((p) => {
       editPointEntities.push(
         v.entities.add({
@@ -154,9 +181,10 @@ export function usePathEditing(options: {
       );
     });
 
-    // 中点标记（n-1 条边，无闭合边）
-    for (let i = 0; i < n - 1; i++) {
-      const mid = Cartesian3.midpoint(pos[i], pos[i + 1], new Cartesian3());
+    // 中点标记（绿色，可点击添加顶点）
+    for (let i = 0; i < n; i++) {
+      const next = (i + 1) % n;
+      const mid = Cartesian3.midpoint(pos[i], pos[next], new Cartesian3());
       editMidpointEntities.push(
         v.entities.add({
           position: mid,
@@ -180,16 +208,22 @@ export function usePathEditing(options: {
 
     const polyPos = positions.value;
     if (editPolylineEntity) {
-      editPolylineEntity.polyline.positions = [...polyPos];
+      editPolylineEntity.polyline.positions = [...polyPos, polyPos[0]];
+    }
+    if (editPolygonEntity) {
+      editPolygonEntity.polygon.hierarchy = [...polyPos];
     }
 
-    // 更新相邻中点（开放折线无 wrap-around）
+    // 更新相邻的两个中点
     const n = polyPos.length;
-    if (index > 0 && editMidpointEntities[index - 1]) {
-      editMidpointEntities[index - 1].position = Cartesian3.midpoint(polyPos[index - 1], polyPos[index], new Cartesian3());
+    const prev = (index - 1 + n) % n;
+    const next = (index + 1) % n;
+
+    if (editMidpointEntities[prev]) {
+      editMidpointEntities[prev].position = Cartesian3.midpoint(polyPos[prev], polyPos[index], new Cartesian3());
     }
-    if (index < n - 1 && editMidpointEntities[index]) {
-      editMidpointEntities[index].position = Cartesian3.midpoint(polyPos[index], polyPos[index + 1], new Cartesian3());
+    if (editMidpointEntities[index]) {
+      editMidpointEntities[index].position = Cartesian3.midpoint(polyPos[index], polyPos[next], new Cartesian3());
     }
   }
 
@@ -220,6 +254,7 @@ export function usePathEditing(options: {
 
     /* MOUSE_MOVE：拖拽 + 光标反馈 */
     editingHandler.setInputAction((movement: any) => {
+      justDragged = false; // 鼠标移动后清除拖拽标志
       lastMousePos = movement.endPosition;
       const v2 = getViewer();
       if (!v2) return;
@@ -241,6 +276,7 @@ export function usePathEditing(options: {
     editingHandler.setInputAction(() => {
       if (dragState) {
         dragState = null;
+        justDragged = true; // 标记拖拽刚结束，阻止接下来的 LEFT_CLICK
         const v2 = getViewer();
         if (v2) v2.canvas.style.cursor = 'default';
         onChange?.();
@@ -250,16 +286,14 @@ export function usePathEditing(options: {
 
     /* LEFT_CLICK：点击中点添加顶点 */
     editingHandler.setInputAction((click: any) => {
-      if (dragState) return;
+      if (dragState || justDragged) return;
       const v2 = getViewer();
       if (!v2) return;
       const picked = v2.scene.pick(click.position);
       if (picked?.id) {
         const idx = editMidpointEntities.indexOf(picked.id);
         if (idx !== -1) {
-          // 对于折线，中点 idx 对应边 positions[idx]→positions[idx+1]
-          const next = idx + 1;
-          if (next >= positions.value.length) return;
+          const next = (idx + 1) % positions.value.length;
           const mid = Cartesian3.midpoint(positions.value[idx], positions.value[next], new Cartesian3());
           positions.value.splice(next, 0, mid);
           onChange?.();
@@ -316,8 +350,8 @@ export function usePathEditing(options: {
 
   function removeVertexByIndex(idx: number) {
     if (idx < 0 || idx >= positions.value.length) return;
-    if (positions.value.length <= 2) {
-      message.warning('至少需要 2 个顶点，无法继续删除');
+    if (positions.value.length <= 3) {
+      message.warning('至少需要 3 个顶点，无法继续删除');
       return;
     }
     positions.value.splice(idx, 1);

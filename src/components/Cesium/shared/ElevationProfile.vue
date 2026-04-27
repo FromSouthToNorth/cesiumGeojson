@@ -11,42 +11,90 @@
       <div class="profile-wrap" @mousemove="onProfileMouseMove" @mouseleave="hoverData = null">
         <svg class="profile-chart" :viewBox="`${-vbPad} ${-vbPad} ${chartW + vbPad * 2} ${chartH + vbPad * 2}`">
           <!-- 网格线 + 高程标签 -->
-          <line v-for="gl in gridLines" :key="gl.key" :x1="gl.x1" :y1="gl.y1" :x2="gl.x2" :y2="gl.y2"
-            stroke="var(--surface-border)" stroke-width="0.5" stroke-dasharray="3,3" />
-          <text v-for="gl in gridLines" :key="'tl' + gl.key" :x="gl.lx" :y="gl.ly"
-            fill="var(--surface-text-muted)" font-size="8" text-anchor="end">{{ gl.label }}</text>
+          <line
+            v-for="gl in gridLines"
+            :key="gl.key"
+            :x1="gl.x1"
+            :y1="gl.y1"
+            :x2="gl.x2"
+            :y2="gl.y2"
+            stroke="var(--surface-border)"
+            stroke-width="0.5"
+            stroke-dasharray="3,3"
+          />
+          <text
+            v-for="gl in gridLines"
+            :key="'tl' + gl.key"
+            :x="gl.lx"
+            :y="gl.ly"
+            fill="var(--surface-text-muted)"
+            font-size="8"
+            text-anchor="end"
+          >
+            {{ gl.label }}
+          </text>
 
           <!-- 填充区域 -->
           <polygon :points="profileArea(profile)" fill="rgba(24,144,255,0.06)" />
 
           <!-- 坡度着色段 -->
-          <line v-for="(seg, i) in coloredSegments" :key="i" :x1="seg.x1" :y1="seg.y1" :x2="seg.x2" :y2="seg.y2"
-            :stroke="seg.color" stroke-width="3" stroke-linecap="round" />
+          <line
+            v-for="(seg, i) in coloredSegments"
+            :key="i"
+            :x1="seg.x1"
+            :y1="seg.y1"
+            :x2="seg.x2"
+            :y2="seg.y2"
+            :stroke="seg.color"
+            stroke-width="3"
+            stroke-linecap="round"
+          />
 
           <!-- 坐标轴 -->
-          <line :x1="padL" :y1="0" :x2="padL" :y2="chartH - padB" stroke="var(--surface-border)"
-            stroke-width="1" />
-          <line :x1="padL" :y1="chartH - padB" :x2="chartW" :y2="chartH - padB" stroke="var(--surface-border)"
-            stroke-width="1" />
+          <line :x1="padL" :y1="0" :x2="padL" :y2="chartH - padB" stroke="var(--surface-border)" stroke-width="1" />
+          <line
+            :x1="padL"
+            :y1="chartH - padB"
+            :x2="chartW"
+            :y2="chartH - padB"
+            stroke="var(--surface-border)"
+            stroke-width="1"
+          />
 
           <!-- 距离标签 -->
-          <text v-for="dl in distLabels" :key="dl.key" :x="dl.x" :y="dl.y" fill="var(--surface-text-muted)"
-            font-size="8" text-anchor="middle">{{ dl.label }}</text>
+          <text
+            v-for="dl in distLabels"
+            :key="dl.key"
+            :x="dl.x"
+            :y="dl.y"
+            fill="var(--surface-text-muted)"
+            font-size="8"
+            text-anchor="middle"
+          >
+            {{ dl.label }}
+          </text>
 
           <!-- 悬停标记 -->
           <template v-if="hoverData">
-            <line :x1="hoverData.x" :y1="0" :x2="hoverData.x" :y2="chartH - padB" stroke="#ff4d4f"
-              stroke-width="1" stroke-dasharray="2,2" />
+            <line
+              :x1="hoverData.x"
+              :y1="0"
+              :x2="hoverData.x"
+              :y2="chartH - padB"
+              stroke="#ff4d4f"
+              stroke-width="1"
+              stroke-dasharray="2,2"
+            />
             <circle :cx="hoverData.x" :cy="hoverData.y" r="4" fill="#ff4d4f" stroke="#fff" stroke-width="1.5" />
           </template>
         </svg>
 
-        <div v-if="hoverData" class="profile-tooltip"
-          :style="{ left: hoverData.tx + 'px', top: hoverData.ty + 'px' }">
+        <div v-if="hoverData" class="profile-tooltip" :style="{ left: hoverData.tx + 'px', top: hoverData.ty + 'px' }">
           <span class="tip-dist">{{ hoverData.distance.toFixed(1) }} m</span>
           <span class="tip-elev">{{ hoverData.elevation.toFixed(0) }} m</span>
-          <span class="tip-slope" :style="{ color: hoverData.slopeColor }">{{
-            Math.abs(hoverData.slope).toFixed(1) }}%</span>
+          <span class="tip-slope" :style="{ color: hoverData.slopeColor }"
+            >{{ Math.abs(hoverData.slope).toFixed(1) }}%</span
+          >
         </div>
       </div>
 
@@ -80,12 +128,21 @@
       <!-- 坡度分布条 -->
       <div v-if="slopeDist" class="slope-dist-section">
         <div class="slope-dist-bar">
-          <div class="slope-bar-seg gentle" :style="{ width: slopeDist.gentlePct + '%' }"
-            :title="'平缓 ' + slopeDist.gentlePct.toFixed(0) + '%'"></div>
-          <div class="slope-bar-seg moderate" :style="{ width: slopeDist.moderatePct + '%' }"
-            :title="'中等 ' + slopeDist.moderatePct.toFixed(0) + '%'"></div>
-          <div class="slope-bar-seg steep" :style="{ width: slopeDist.steepPct + '%' }"
-            :title="'陡峭 ' + slopeDist.steepPct.toFixed(0) + '%'"></div>
+          <div
+            class="slope-bar-seg gentle"
+            :style="{ width: slopeDist.gentlePct + '%' }"
+            :title="'平缓 ' + slopeDist.gentlePct.toFixed(0) + '%'"
+          ></div>
+          <div
+            class="slope-bar-seg moderate"
+            :style="{ width: slopeDist.moderatePct + '%' }"
+            :title="'中等 ' + slopeDist.moderatePct.toFixed(0) + '%'"
+          ></div>
+          <div
+            class="slope-bar-seg steep"
+            :style="{ width: slopeDist.steepPct + '%' }"
+            :title="'陡峭 ' + slopeDist.steepPct.toFixed(0) + '%'"
+          ></div>
         </div>
         <div class="slope-dist-labels">
           <span><span class="dot gentle"></span>平缓 {{ slopeDist.gentlePct.toFixed(0) }}%</span>
@@ -96,7 +153,10 @@
     </template>
 
     <!-- 加载中 -->
-    <div v-else-if="loading" class="loading-hint">正在采样地形高程...</div>
+    <div v-else-if="loading" class="loading-wrap">
+      <Spin size="small" />
+      <span class="loading-text">正在采样地形高程...</span>
+    </div>
 
     <!-- 空态：提供重新采样 -->
     <Button v-else size="small" @click="$emit('resample')">
@@ -108,7 +168,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Button } from 'ant-design-vue';
+import { Button, Spin } from 'ant-design-vue';
 import { ReloadOutlined } from '@ant-design/icons-vue';
 import type { ElevationProfile } from '@/types/geoPath';
 
@@ -119,7 +179,7 @@ const props = defineProps<{
   loading: boolean;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   resample: [];
 }>();
 
@@ -130,7 +190,7 @@ const padL = 34;
 const padB = 22;
 const plotW = chartW - padL;
 const plotH = chartH - padB;
-const vbPad = 8; // viewBox 额外边距防止边缘文字被裁切
+const vbPad = 16; // viewBox 额外边距防止边缘文字被裁切
 
 function profilePoints(profile: ElevationProfile): string {
   const { distances, elevations } = profile;
@@ -236,8 +296,12 @@ const gridLines = computed(() => {
     if (y < -5 || y > chartH - padB + 5) continue;
     lines.push({
       key: val,
-      x1: padL, y1: y, x2: chartW, y2: y,
-      lx: padL - 4, ly: y + 3,
+      x1: padL,
+      y1: y,
+      x2: chartW,
+      y2: y,
+      lx: padL - 4,
+      ly: y + 3,
       label: `${val.toFixed(val % 1 === 0 ? 0 : 1)}m`,
     });
   }
@@ -270,10 +334,12 @@ const slopeDist = computed(() => {
   const profile = props.profile;
   if (!profile || profile.distances.length < 2) return null;
   const { distances, elevations } = profile;
-  let gentle = 0, moderate = 0, steep = 0;
+  let gentle = 0,
+    moderate = 0,
+    steep = 0;
   for (let i = 0; i < distances.length - 1; i++) {
     const segDist = distances[i + 1] - distances[i];
-    const slope = segDist > 0 ? Math.abs((elevations[i + 1] - elevations[i]) / segDist * 100) : 0;
+    const slope = segDist > 0 ? Math.abs(((elevations[i + 1] - elevations[i]) / segDist) * 100) : 0;
     if (slope < 5) gentle += segDist;
     else if (slope < 15) moderate += segDist;
     else steep += segDist;
@@ -289,8 +355,14 @@ const slopeDist = computed(() => {
 
 /* ── 鼠标悬停交互 ── */
 const hoverData = ref<{
-  x: number; y: number; tx: number; ty: number;
-  distance: number; elevation: number; slope: number; slopeColor: string;
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  distance: number;
+  elevation: number;
+  slope: number;
+  slopeColor: string;
 } | null>(null);
 
 function onProfileMouseMove(e: MouseEvent) {
@@ -305,13 +377,16 @@ function onProfileMouseMove(e: MouseEvent) {
   const mouseX = e.clientX - rect.left;
 
   const maxD = distances[distances.length - 1] || 1;
-  const dataDist = ((mouseX / rect.width) * chartW - padL) / plotW * maxD;
+  const dataDist = (((mouseX / rect.width) * chartW - padL) / plotW) * maxD;
 
   let nearestIdx = 0;
   let minGap = Infinity;
   for (let i = 0; i < distances.length; i++) {
     const gap = Math.abs(distances[i] - dataDist);
-    if (gap < minGap) { minGap = gap; nearestIdx = i; }
+    if (gap < minGap) {
+      minGap = gap;
+      nearestIdx = i;
+    }
   }
 
   const distance = distances[nearestIdx];
@@ -325,7 +400,9 @@ function onProfileMouseMove(e: MouseEvent) {
   } else if (nearestIdx === 0 && distances.length > 1) {
     slope = ((elevations[1] - elevations[0]) / (distances[1] - distances[0])) * 100;
   } else if (nearestIdx === elevations.length - 1 && elevations.length > 1) {
-    slope = ((elevations[nearestIdx] - elevations[nearestIdx - 1]) / (distances[nearestIdx] - distances[nearestIdx - 1])) * 100;
+    slope =
+      ((elevations[nearestIdx] - elevations[nearestIdx - 1]) / (distances[nearestIdx] - distances[nearestIdx - 1])) *
+      100;
   }
 
   const { minE, hRange } = calcProfileRange(profile);
@@ -339,8 +416,13 @@ function onProfileMouseMove(e: MouseEvent) {
   if (ty < 4) ty = e.clientY + 12;
 
   hoverData.value = {
-    x: markerX, y: markerY, tx, ty,
-    distance, elevation, slope,
+    x: markerX,
+    y: markerY,
+    tx,
+    ty,
+    distance,
+    elevation,
+    slope,
     slopeColor: getSlopeColor(slope),
   };
 }
@@ -366,10 +448,10 @@ function onProfileMouseMove(e: MouseEvent) {
 .profile-chart {
   display: block;
   width: 100%;
-  aspect-ratio: 336 / 166;
   border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: var(--surface-bg-secondary, var(--surface-bg));
+  aspect-ratio: 352 / 182;
 }
 
 .profile-chart text {
@@ -379,18 +461,18 @@ function onProfileMouseMove(e: MouseEvent) {
 
 .profile-tooltip {
   position: fixed;
+  z-index: 400;
   display: flex;
   gap: 8px;
   padding: 3px 8px;
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
   background: var(--surface-bg);
-  border: 1px solid var(--surface-border);
   box-shadow: 0 4px 12px var(--surface-shadow);
   font-size: 11px;
   line-height: 1.6;
   white-space: nowrap;
   pointer-events: none;
-  z-index: 1000;
 }
 
 .profile-tooltip .tip-dist {
@@ -492,10 +574,16 @@ function onProfileMouseMove(e: MouseEvent) {
   background: var(--slope-steep);
 }
 
-.loading-hint {
-  padding: 12px;
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+}
+
+.loading-text {
   color: var(--surface-text-muted);
   font-size: 12px;
-  text-align: center;
 }
 </style>

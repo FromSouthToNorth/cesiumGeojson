@@ -4,13 +4,8 @@
  * ============================== */
 
 import { ref, toRaw, type ComputedRef } from 'vue';
-import {
-  Cartesian3,
-  Cartographic,
-  EllipsoidGeodesic,
-  Color,
-} from 'cesium';
-import { isValidViewer } from './clipCommon';
+import { Cartesian3, Cartographic, EllipsoidGeodesic, Color } from 'cesium';
+import { isValidViewer } from '../shared/common';
 import { calcPathDistances } from './usePathMeasure';
 import type { GeoPath, PlaybackOptions } from '@/types/geoPath';
 
@@ -26,8 +21,7 @@ const DEFAULT_OPTIONS: PlaybackOptions = {
 
 /** 判断 Cartesian3 是否有效 */
 function isValidCartesian3(pos: Cartesian3): boolean {
-  return isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z) &&
-    !(pos.x === 0 && pos.y === 0 && pos.z === 0);
+  return isFinite(pos.x) && isFinite(pos.y) && isFinite(pos.z) && !(pos.x === 0 && pos.y === 0 && pos.z === 0);
 }
 
 /** 沿路径根据进度插值位置 */
@@ -66,7 +60,9 @@ function interpolatePosition(
 
       const geodesic = new EllipsoidGeodesic(startCarto, endCarto);
       let result: Cartographic;
-      try { result = geodesic.interpolateUsingFraction(frac); } catch {
+      try {
+        result = geodesic.interpolateUsingFraction(frac);
+      } catch {
         return startPos;
       }
       if (!isFinite(result.longitude) || !isFinite(result.latitude)) {
@@ -78,9 +74,7 @@ function interpolatePosition(
     accumulated += segDist;
   }
 
-  return positions.length >= 2
-    ? positions[positions.length - 1]
-    : positions[0];
+  return positions.length >= 2 ? positions[positions.length - 1] : positions[0];
 }
 
 export function usePathPlayback(options: { viewer: ComputedRef<any> }) {
@@ -175,7 +169,10 @@ export function usePathPlayback(options: { viewer: ComputedRef<any> }) {
         if (!isPlaying.value || isPaused.value) return;
 
         const now = performance.now();
-        if (lastFrameTime === 0) { lastFrameTime = now; return; }
+        if (lastFrameTime === 0) {
+          lastFrameTime = now;
+          return;
+        }
         const dt = Math.min((now - lastFrameTime) / 1000, 1);
         lastFrameTime = now;
 
@@ -185,7 +182,10 @@ export function usePathPlayback(options: { viewer: ComputedRef<any> }) {
         currentDuration.value = pauseElapsed;
 
         const position = interpolatePosition(pathPositions, segmentDistances, totalDistance, p);
-        if (!isValidCartesian3(position)) { stopPlayback(); return; }
+        if (!isValidCartesian3(position)) {
+          stopPlayback();
+          return;
+        }
 
         currentDistance.value = p * totalDistance;
 
@@ -210,7 +210,10 @@ export function usePathPlayback(options: { viewer: ComputedRef<any> }) {
   }
 
   function stopFrameLoop() {
-    if (removePreUpdate) { removePreUpdate(); removePreUpdate = null; }
+    if (removePreUpdate) {
+      removePreUpdate();
+      removePreUpdate = null;
+    }
   }
 
   /* ===== 公开 API ===== */
@@ -285,7 +288,9 @@ export function usePathPlayback(options: { viewer: ComputedRef<any> }) {
     }
   }
 
-  function setSpeed(s: number) { speed.value = s; }
+  function setSpeed(s: number) {
+    speed.value = s;
+  }
 
   function toggleFollowCamera() {
     followCamera.value = !followCamera.value;
@@ -314,12 +319,26 @@ export function usePathPlayback(options: { viewer: ComputedRef<any> }) {
     if (trailEntity) trailEntity.polyline.positions = [position, position];
   }
 
-  function destroy() { stopPlayback(); }
+  function destroy() {
+    stopPlayback();
+  }
 
   return {
-    isPlaying, isPaused, speed, progress, followCamera,
-    currentDistance, currentDuration, estimatedDuration,
-    startPlayback, pausePlayback, resumePlayback, stopPlayback,
-    setSpeed, seekTo, toggleFollowCamera, destroy,
+    isPlaying,
+    isPaused,
+    speed,
+    progress,
+    followCamera,
+    currentDistance,
+    currentDuration,
+    estimatedDuration,
+    startPlayback,
+    pausePlayback,
+    resumePlayback,
+    stopPlayback,
+    setSpeed,
+    seekTo,
+    toggleFollowCamera,
+    destroy,
   };
 }

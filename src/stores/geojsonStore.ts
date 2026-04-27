@@ -127,7 +127,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     layers.value.push(layer);
     const v = toRaw(viewer.value);
     if (v && !v.isDestroyed()) {
-      v.flyTo(dataSource).catch(() => { });
+      v.flyTo(dataSource).catch(() => {});
     }
   }
 
@@ -153,13 +153,33 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 移除所有图层 */
+  function removeAllLayers() {
+    if (layers.value.length === 0) return;
+    const targets = layers.value.map((l) => toRaw(l));
+    layers.value = [];
+
+    const v = toRaw(viewer.value);
+    if (v && !v.isDestroyed()) {
+      setTimeout(() => {
+        for (const target of targets) {
+          try {
+            v.dataSources.remove(target.dataSource, true);
+          } catch (err) {
+            console.error('移除 Cesium 数据源失败:', err);
+          }
+        }
+      }, 0);
+    }
+  }
+
   /** 飞行定位到图层 */
   function flyToLayer(id: string) {
     const target = layers.value.find((l) => l.id === id);
     if (target) {
       const v = toRaw(viewer.value);
       if (v && !v.isDestroyed()) {
-        v.flyTo(toRaw(target).dataSource).catch(() => { });
+        v.flyTo(toRaw(target).dataSource).catch(() => {});
       }
     }
   }
@@ -174,11 +194,21 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     }
   }
 
+  /** 批量切换所有图层显隐 */
+  function toggleAllVisibility() {
+    const targetShow = !layers.value.every((l) => l.show);
+    layers.value.forEach((layer) => {
+      if (layer.show !== targetShow) {
+        toggleLayerVisibility(layer.id);
+      }
+    });
+  }
+
   /** 飞行定位到单个要素 */
   function flyToFeature(entity: any) {
     const v = toRaw(viewer.value);
     if (v && !v.isDestroyed()) {
-      v.flyTo(toRaw(entity)).catch(() => { });
+      v.flyTo(toRaw(entity)).catch(() => {});
     }
   }
 
@@ -279,8 +309,10 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     layers,
     addLayer,
     removeLayer,
+    removeAllLayers,
     flyToLayer,
     toggleLayerVisibility,
+    toggleAllVisibility,
     flyToFeature,
     loadGeoJson,
   };

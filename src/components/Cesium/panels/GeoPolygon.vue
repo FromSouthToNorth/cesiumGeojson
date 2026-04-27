@@ -38,12 +38,25 @@
           <span class="info-label">实时面积</span>
           <span class="info-value highlight">{{ liveArea }}</span>
         </div>
+        <div class="info-row">
+          <span class="info-label">吸附</span>
+          <div class="snapping-controls">
+            <Switch
+              v-model:checked="store.snappingEnabled"
+              size="small"
+              :checked-children="'开'"
+              :un-checked-children="'关'"
+            />
+            <span v-if="store.isSnapping" class="snapping-badge">吸附中</span>
+          </div>
+        </div>
       </div>
       <div class="instructions">
         <p>左键点击添加顶点</p>
         <p>鼠标移动预览闭合</p>
         <p>右键 / Enter 完成绘制</p>
         <p>Backspace 撤销末点 / Escape 取消</p>
+        <p class="snap-hint">按住 Shift 临时禁用吸附</p>
       </div>
       <Button danger block @click="store.cancelDraw()">
         <CloseOutlined />
@@ -68,6 +81,17 @@
         </Button>
       </div>
 
+      <ListToolbar
+        :count="store.polygons.length"
+        :all-visible="store.polygons.length > 0 && store.polygons.every((p) => p.show)"
+        :search-query="searchQuery"
+        search-placeholder="搜索多边形"
+        item-name="多边形"
+        @toggle-all-visibility="store.toggleAllVisibility()"
+        @remove-all="store.clearAll()"
+        @update:search-query="searchQuery = $event"
+      />
+
       <!-- 汇总统计 -->
       <div v-if="store.polygonStats" class="stats-bar">
         <span class="stat-item">{{ store.polygonStats.count }} 个多边形</span>
@@ -76,8 +100,13 @@
       </div>
 
       <div class="paths-scroll">
-        <div v-for="poly in store.polygons" :key="poly.id" class="path-card"
-          :class="{ active: poly.id === store.activePolygonId }" @click="store.selectPolygon(poly.id)">
+        <div
+          v-for="poly in filteredPolygons"
+          :key="poly.id"
+          class="path-card"
+          :class="{ active: poly.id === store.activePolygonId }"
+          @click="store.selectPolygon(poly.id)"
+        >
           <div class="path-header">
             <div class="path-info">
               <span class="color-dot" :style="{ backgroundColor: poly.color }"></span>
@@ -85,23 +114,41 @@
             </div>
             <div class="path-actions">
               <Tooltip title="飞行定位">
-                <Button type="text" size="small" class="action-btn" @click.stop="store.flyToPolygon(poly.id)">
+                <Button
+                  type="text"
+                  size="small"
+                  class="action-btn"
+                  aria-label="飞行定位"
+                  @click.stop="store.flyToPolygon(poly.id)"
+                >
                   <AimOutlined />
                 </Button>
               </Tooltip>
               <Tooltip :title="poly.show ? '隐藏' : '显示'">
-                <Button type="text" size="small" class="action-btn" @click.stop="store.toggleVisibility(poly.id)">
+                <Button
+                  type="text"
+                  size="small"
+                  class="action-btn"
+                  :aria-label="poly.show ? '隐藏多边形' : '显示多边形'"
+                  @click.stop="store.toggleVisibility(poly.id)"
+                >
                   <EyeOutlined v-if="poly.show" />
                   <EyeInvisibleOutlined v-else />
                 </Button>
               </Tooltip>
               <Popconfirm title="确认删除该多边形？" placement="topRight" @confirm.stop="store.removePolygon(poly.id)">
-                <Button type="text" danger size="small" class="action-btn" @click.stop>
+                <Button type="text" danger size="small" class="action-btn" aria-label="删除多边形" @click.stop>
                   <DeleteOutlined />
                 </Button>
               </Popconfirm>
               <Tooltip title="编辑顶点">
-                <Button type="text" size="small" class="action-btn" @click.stop="store.startEdit(poly.id)">
+                <Button
+                  type="text"
+                  size="small"
+                  class="action-btn"
+                  aria-label="编辑顶点"
+                  @click.stop="store.startEdit(poly.id)"
+                >
                   <EditOutlined />
                 </Button>
               </Tooltip>
@@ -132,22 +179,35 @@
             <VertexTable :vertices="store.vertexData" />
 
             <!-- ── 坡度分析 ── -->
-            <SlopeAnalysis :result="store.slopeResult" :loading="store.slopeLoading" :show-grid="store.showSlopeGrid"
-              @analyze="store.analyzeSlope(poly.id)" @toggle-grid="store.toggleSlopeGrid()"
-              @reanalyze="store.analyzeSlope(poly.id)" />
+            <SlopeAnalysis
+              :result="store.slopeResult"
+              :loading="store.slopeLoading"
+              :show-grid="store.showSlopeGrid"
+              @analyze="store.analyzeSlope(poly.id)"
+              @toggle-grid="store.toggleSlopeGrid()"
+              @reanalyze="store.analyzeSlope(poly.id)"
+            />
 
             <!-- 工具按钮 -->
             <div class="detail-tools">
               <Tooltip title="裁切模式下显示多边形外部">
-                <Button size="small" :type="store.clippingInverse ? 'primary' : 'default'"
-                  :disabled="!poly.clipping" :danger="store.clippingInverse"
-                  @click.stop="store.toggleClippingInverse()">
+                <Button
+                  size="small"
+                  :type="store.clippingInverse ? 'primary' : 'default'"
+                  :disabled="!poly.clipping"
+                  :danger="store.clippingInverse"
+                  @click.stop="store.toggleClippingInverse()"
+                >
                   {{ store.clippingInverse ? '反选中' : '反选' }}
                 </Button>
               </Tooltip>
               <Tooltip title="以该多边形形状裁切地形">
-                <Button size="small" :type="poly.clipping ? 'primary' : 'default'" :danger="poly.clipping"
-                  @click.stop="store.toggleClipping(poly.id)">
+                <Button
+                  size="small"
+                  :type="poly.clipping ? 'primary' : 'default'"
+                  :danger="poly.clipping"
+                  @click.stop="store.toggleClipping(poly.id)"
+                >
                   <template v-if="poly.clipping">裁切中</template>
                   <template v-else>地形裁切</template>
                 </Button>
@@ -165,14 +225,22 @@
       </div>
     </template>
 
-    <EditToolbar :visible="store.isEditing" :can-undo="store.canUndo" :can-redo="store.canRedo" :vertex-count="store.positions.length" @finish="store.stopEdit()" @undo="store.undo()" @redo="store.redo()" />
+    <EditToolbar
+      :visible="store.isEditing"
+      :can-undo="store.canUndo"
+      :can-redo="store.canRedo"
+      :vertex-count="store.positions.length"
+      @finish="store.stopEdit()"
+      @undo="store.undo()"
+      @redo="store.redo()"
+    />
   </SidePanel>
   <input ref="fileInput" type="file" accept=".geojson,.json" hidden @change="handleFileImport" />
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
-import { Button, Input, Tooltip, Popconfirm, message } from 'ant-design-vue';
+import { onUnmounted, ref, watch, computed } from 'vue';
+import { Button, Input, Switch, Tooltip, Popconfirm, message } from 'ant-design-vue';
 import {
   AuditOutlined,
   CloseOutlined,
@@ -188,9 +256,10 @@ import {
   TagsFilled,
 } from '@ant-design/icons-vue';
 import { SidePanel } from '.';
-import { VertexTable, SlopeAnalysis, EditToolbar } from '../shared';
+import { ListToolbar, VertexTable, SlopeAnalysis, EditToolbar } from '../shared';
 import { useGeoPolygonStore, formatArea, formatDist } from '@/stores/geoPolygonStore';
-import { calcPolygonMeasure } from '@/utils/cesium/usePolygonDrawing';
+import { useListSearch } from '@/utils/useListSearch';
+import { calcPolygonMeasure } from '@/utils/cesium/polygon/usePolygonDrawing';
 
 defineOptions({ name: 'GeoPolygon' });
 
@@ -198,6 +267,9 @@ defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 
 const store = useGeoPolygonStore();
+
+/* ── 搜索过滤 ── */
+const { searchQuery, filteredItems: filteredPolygons } = useListSearch(computed(() => store.polygons));
 
 /* ── 多边形创建 ── */
 const drawName = ref('');
@@ -344,6 +416,21 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.snapping-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.snapping-badge {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--primary-color, #1890ff);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+}
+
 .instructions {
   padding: 8px 10px;
   border: 1px dashed var(--surface-border);
@@ -355,6 +442,12 @@ onUnmounted(() => {
   margin: 2px 0;
   color: var(--surface-text-muted);
   font-size: 12px;
+}
+
+.snap-hint {
+  margin-top: 4px;
+  color: var(--primary-color, #1890ff);
+  font-size: 11px;
 }
 
 .paths-actions {
@@ -509,18 +602,17 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-
 /* ── 汇总统计 ── */
 .stats-bar {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 10px;
+  margin-bottom: 8px;
   padding: 6px 8px;
   border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: var(--surface-bg-secondary, var(--surface-bg));
   font-size: 12px;
-  margin-bottom: 8px;
 }
 
 .stat-item {
@@ -528,10 +620,32 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+/* 状态切换淡入动画 */
+.empty-state,
+.drawing-header,
+.drawing-info,
+.instructions,
+.paths-actions,
+.paths-scroll {
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ── 详情工具按钮 ── */
 .detail-tools {
   display: flex;
-  gap: 6px;
   flex-wrap: wrap;
+  gap: 6px;
 }
 </style>

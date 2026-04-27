@@ -8,14 +8,15 @@
 
     <!-- 空态 -->
     <template v-if="!result && !loading">
-      <Button size="small" @click="$emit('analyze')">
-        开始坡度分析
-      </Button>
+      <Button size="small" @click="$emit('analyze')"> 开始坡度分析 </Button>
       <p class="hint">在选区内生成网格采样点，分析坡度分布</p>
     </template>
 
     <!-- 加载态 -->
-    <div v-else-if="loading" class="loading-hint">正在采样地形并计算坡度...</div>
+    <div v-else-if="loading" class="loading-wrap">
+      <Spin size="small" />
+      <span class="loading-text">正在采样地形并计算坡度...</span>
+    </div>
 
     <!-- 结果态 -->
     <template v-else-if="result && !loading">
@@ -52,12 +53,21 @@
       <!-- 坡度分布条 -->
       <div class="slope-dist-section">
         <div class="slope-dist-bar">
-          <div class="slope-bar-seg gentle" :style="{ width: result.gentlePct + '%' }"
-            :title="'平缓 ' + result.gentlePct.toFixed(0) + '%'"></div>
-          <div class="slope-bar-seg moderate" :style="{ width: result.moderatePct + '%' }"
-            :title="'中等 ' + result.moderatePct.toFixed(0) + '%'"></div>
-          <div class="slope-bar-seg steep" :style="{ width: result.steepPct + '%' }"
-            :title="'陡峭 ' + result.steepPct.toFixed(0) + '%'"></div>
+          <div
+            class="slope-bar-seg gentle"
+            :style="{ width: result.gentlePct + '%' }"
+            :title="'平缓 ' + result.gentlePct.toFixed(0) + '%'"
+          ></div>
+          <div
+            class="slope-bar-seg moderate"
+            :style="{ width: result.moderatePct + '%' }"
+            :title="'中等 ' + result.moderatePct.toFixed(0) + '%'"
+          ></div>
+          <div
+            class="slope-bar-seg steep"
+            :style="{ width: result.steepPct + '%' }"
+            :title="'陡峭 ' + result.steepPct.toFixed(0) + '%'"
+          ></div>
         </div>
         <div class="slope-dist-labels">
           <span><span class="dot gentle"></span>平缓 {{ result.gentlePct.toFixed(0) }}%</span>
@@ -93,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { Button } from 'ant-design-vue';
+import { Button, Spin } from 'ant-design-vue';
 import { ReloadOutlined } from '@ant-design/icons-vue';
 import type { SlopeAnalysisResult } from '@/types/geoPolygon';
 
@@ -133,11 +143,17 @@ defineEmits<{
   text-align: center;
 }
 
-.loading-hint {
-  padding: 8px;
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+}
+
+.loading-text {
   color: var(--surface-text-muted);
   font-size: 12px;
-  text-align: center;
 }
 
 .slope-grid {
@@ -167,9 +183,9 @@ defineEmits<{
 }
 
 .slope-stat .stat-angle {
+  margin-left: 4px;
   color: var(--surface-text-muted);
   font-size: 11px;
-  margin-left: 4px;
 }
 
 .slope-dist-section {
@@ -251,8 +267,8 @@ defineEmits<{
 .legend-items {
   display: flex;
   gap: 10px;
-  font-size: 11px;
   color: var(--surface-text-muted);
+  font-size: 11px;
 }
 
 .legend-item {
@@ -265,8 +281,8 @@ defineEmits<{
   display: inline-block;
   width: 10px;
   height: 10px;
+  border: 1px solid rgb(255 255 255 / 0.3);
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .legend-dot.gentle {

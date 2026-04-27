@@ -2,9 +2,9 @@ import { ref, toRaw } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
 import { Cartesian3, Color, HeightReference, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 import type { Viewer } from 'cesium';
-import { isValidViewer, pickGlobe } from './clipCommon';
-import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import type { ShortcutDef } from './useKeyboardShortcuts';
+import { isValidViewer, pickGlobe } from '../shared/common';
+import { useKeyboardShortcuts } from '../shared/useKeyboardShortcuts';
+import type { ShortcutDef } from '../shared/useKeyboardShortcuts';
 
 /**
  * 绘制模式 composable

@@ -42,7 +42,8 @@ src/
 │       ├── ElevationProfile.vue # Path elevation profile chart
 │       ├── VertexTable.vue     # Generic vertex coordinate table
 │       ├── SlopeAnalysis.vue   # Slope analysis (stats, distribution, legend)
-│       └── EditToolbar.vue     # Shared editor toolbar (finish/undo/redo)
+│       ├── EditToolbar.vue     # Shared editor toolbar (finish/undo/redo)
+│       └── ListToolbar.vue     # Shared list toolbar (count + toggle-all + remove-all + search)
 ├── stores/                    # Pinia stores
 │   ├── cesiumStore.ts         # Viewer singleton
 │   ├── geojsonStore.ts        # GeoJSON layer CRUD
@@ -56,21 +57,28 @@ src/
 │   └── geoPolygon.ts          # GeoPolygon, GeoPolygonMeasureResult types
 ├── utils/
 │   ├── cesium/
-│   │   ├── index.ts           # Viewer factory (Ion token, terrain, loading state)
-│   │   ├── clipCommon.ts      # Terrain clip shared types & helpers
-│   │   ├── useClipHistory.ts  # Terrain clip undo/redo stack
-│   │   ├── useClipPersistence.ts # Terrain clip localStorage persistence
-│   │   ├── useClipDrawing.ts  # Terrain clip polygon drawing mode
-│   │   ├── useClipEditing.ts  # Terrain clip vertex editing mode
-│   │   ├── useKeyboardShortcuts.ts # Declarative keyboard shortcuts (cross-platform Ctrl/Cmd)
-│   │   ├── usePathDrawing.ts  # Polyline drawing (left-click add, right-click finish)
-│   │   ├── usePathEditing.ts  # Polyline vertex editing (drag/add/delete, open polyline)
-│   │   ├── usePathMeasure.ts  # Geodesic distance calculation
-│   │   ├── usePathProfile.ts  # Terrain elevation profile sampling & stats
-│   │   ├── usePolygonDrawing.ts # Polygon drawing & area/perimeter measurement
-│   │   ├── usePolygonEditing.ts # Polygon vertex editing (drag/add/delete, closed polygon)
-│   │   └── usePolygonSlope.ts   # Terrain slope analysis (Horn algorithm, grid sampling)
-│   └── geojson/index.ts       # GeoJSON coordinate inspection
+│   │   ├── viewer.ts          # Viewer factory (Ion token, terrain, loading state)
+│   │   ├── shared/
+│   │   │   ├── common.ts      # Shared types & helpers (terrain clip, drawing, etc.)
+│   │   │   ├── useKeyboardShortcuts.ts # Declarative keyboard shortcuts (cross-platform Ctrl/Cmd)
+│   │   │   └── useSnapping.ts # Drawing vertex snapping (world + screen distance filter, shift disable)
+│   │   ├── terrain-clip/
+│   │   │   ├── useClipDrawing.ts   # Terrain clip polygon drawing mode
+│   │   │   ├── useClipEditing.ts   # Terrain clip vertex editing mode
+│   │   │   ├── useClipHistory.ts   # Terrain clip undo/redo stack
+│   │   │   └── useClipPersistence.ts # Terrain clip localStorage persistence
+│   │   ├── path/
+│   │   │   ├── usePathDrawing.ts   # Polyline drawing (left-click add, right-click finish)
+│   │   │   ├── usePathEditing.ts   # Polyline vertex editing (drag/add/delete, open polyline)
+│   │   │   ├── usePathMeasure.ts   # Geodesic distance calculation
+│   │   │   ├── usePathPlayback.ts  # Path trajectory playback animation
+│   │   │   └── usePathProfile.ts   # Terrain elevation profile sampling & stats
+│   │   └── polygon/
+│   │       ├── usePolygonDrawing.ts # Polygon drawing & area/perimeter measurement
+│   │       ├── usePolygonEditing.ts # Polygon vertex editing (drag/add/delete, closed polygon)
+│   │       └── usePolygonSlope.ts   # Terrain slope analysis (Horn algorithm, grid sampling)
+│   ├── geojson/index.ts       # GeoJSON coordinate inspection
+│   └── useListSearch.ts       # Generic list search filter composable (debounced)
 ├── views/Home.vue
 ├── layouts/index.vue
 ├── router/index.ts            # / → /cesium
@@ -187,6 +195,7 @@ Key details:
 - **Elevation profile**: Samples terrain at 10m intervals along the path, computes min/max/avg/climb/descent/gradient, rendered as inline SVG chart. Re-sample button shown when profile is stale.
 - **GeoJSON import/export**: Cartesian3 → [lng, lat, height] conversion, FeatureCollection blob download. Import supports `.geojson` / `.json` files via file picker.
 - **Path colors**: 8-color cycle (`#FF4D4F`, `#52C41A`, `#1890FF`, `#FAAD14`, `#722ED1`, `#13C2C2`, `#EB2F96`, `#FA541C`). Drawing preview color matches assigned path color.
+- **Snapping**: `useSnapping` composable shared with GeoPolygon. World-distance coarse filter (300m) + screen-distance fine filter (12px). Supports vertex and edge-midpoint snapping with visual indicator (gold dot) and dashed guide line. Hold **Shift** to temporarily disable.
 
 ### GeoPolygon Architecture
 
@@ -216,6 +225,7 @@ Key details:
 - **Vertex data**: Expanded detail shows vertex table with lng/lat/height/elevation. Supports copy to clipboard and CSV export.
 - **Vertex elevation**: Terrain elevation sampled at each vertex via Cesium `sampleTerrain()` on finishDraw and after editing.
 - **Colors**: 8-color cycle (same as geoPath).
+- **Snapping**: Same `useSnapping` composable as GeoPath. Vertex + edge-midpoint snapping with cyan midpoint indicator. Hold **Shift** to temporarily disable.
 - **GeoJSON import/export**: FeatureCollection with closed-ring Polygon geometry. Clipping state persisted in properties. Import supports `.geojson` / `.json` files via file picker.
 
 #### Slope Analysis (`usePolygonSlope.ts`)
@@ -264,3 +274,61 @@ Per-polygon terrain clipping toggleable from the detail panel:
 - **Naming**: kebab-case selectors (BEM-like: `.block__element--modifier`); kebab-case custom properties (`--custom-property`)
 - **Best practices**: use shorthand properties where possible, prefer modern color notation (`rgb(1 2 3 / 0.5)`), use number for alpha values
 - Scoped styles only (no global style leakage from components)
+
+### UX & Accessibility Guidelines
+
+Project-wide accessibility and interaction standards enforced across all Cesium UI components.
+
+#### Touch Targets
+- All icon-only buttons must be **minimum 44×44px** (`Toolbox.vue` tool buttons, `CesiumNavigation.vue` nav buttons)
+- Action buttons inside cards/lists should use `width: 28px; height: 28px;` minimum
+
+#### ARIA Labels
+- Every icon-only button **must** have an `aria-label` attribute describing its action
+- Dynamic state buttons (show/hide toggle) should use conditional `aria-label` reflecting current state
+- Interactive custom widgets (e.g. `Compass.vue`) need `role="button"`, `tabindex="0"`, and descriptive `aria-label`
+
+#### Keyboard Navigation
+- `SidePanel` supports **Escape** key to close (global `keydown` listener, only active when visible)
+- `Compass.vue` supports **Enter** to reset to north, **←→** arrow keys to rotate camera
+- Focus-visible states must be styled with clear outline (`outline: 2px solid var(--color-primary)`)
+
+#### Z-Index Scale
+Define z-index in steps of 100 to prevent overlap conflicts:
+
+| Layer | z-index | Elements |
+|-------|---------|----------|
+| Map controls | 100 | Toolbox, CesiumNavigation |
+| Side panels | 200 | SidePanel and all tool panels |
+| Modals / popovers | 300 | Popconfirm, Dropdown, Modal |
+| Floating tooltips | 400 | profile-tooltip, map labels |
+
+#### Responsive Design
+- `SidePanel` adapts on small screens (`@media (max-width: 480px)`) with `width: calc(100vw - 76px)`
+- Toolbox width changes (`48px → 56px`) must sync SidePanel `left` offset accordingly
+
+#### Reduced Motion
+- All entrance/exit animations respect `prefers-reduced-motion: reduce`
+- SidePanel transition disabled under reduced motion (instant show/hide)
+- Compass pulse indicator animation disabled under reduced motion
+
+#### Loading States
+- Async terrain operations (elevation profile, slope analysis) use `Spin` component + descriptive text
+- Avoid bare text loading hints; always pair with a visual spinner
+
+#### Form Validation
+- Real-time validation on `blur` with `validateStatus` + `help` on Ant Design `Form.Item`
+- Submit-time validation via centralized `validateForm()` before async operations
+- Validation states cleared on valid input
+
+#### State Transitions
+- Major state switches (idle ↔ drawing ↔ list) should have subtle fade-in animation (`opacity + translateY`, 0.2s)
+- Use `@keyframes fadeIn` on state container elements for consistent feel across GeoPath, GeoPolygon, TerrainClip panels
+
+#### Search & Filter
+- User-typed search queries must be **debounced** (300ms) to avoid excessive re-computation
+- Keep raw input for UI responsiveness; use debounced value for actual filtering
+
+#### Snapping UX
+- Vertex snapping feature must have visual indicator + instructional hint in drawing mode
+- Show `"按住 Shift 临时禁用吸附"` in drawing instructions when snapping is available

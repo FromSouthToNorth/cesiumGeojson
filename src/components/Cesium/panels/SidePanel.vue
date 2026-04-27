@@ -20,27 +20,43 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue';
 import { Button } from 'ant-design-vue';
 import { CloseOutlined } from '@ant-design/icons-vue';
 
 defineOptions({ name: 'SidePanel' });
 
-defineProps<{
+const props = defineProps<{
   visible: boolean;
   title: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'update:visible': [value: boolean];
 }>();
+
+/** Escape 键关闭面板 */
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && props.visible) {
+    emit('update:visible', false);
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <style scoped>
 .side-panel {
   position: absolute;
   top: 12px;
-  left: 56px;
-  z-index: 9;
+  left: 64px;
+  z-index: 200;
   display: flex;
   flex-direction: column;
   width: 380px;
@@ -49,8 +65,8 @@ defineEmits<{
   border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface-bg);
-  backdrop-filter: blur(12px);
   box-shadow: 0 4px 24px var(--surface-shadow);
+  backdrop-filter: blur(12px);
 }
 
 .panel-header {
@@ -64,14 +80,14 @@ defineEmits<{
 }
 
 .panel-header::before {
+  content: '';
   position: absolute;
   top: 50%;
   left: 0;
   width: 3px;
   height: 18px;
-  content: '';
-  background: var(--color-primary);
   border-radius: 0 2px 2px 0;
+  background: var(--color-primary);
   transform: translateY(-50%);
 }
 
@@ -88,8 +104,8 @@ defineEmits<{
   justify-content: center;
   width: 28px;
   height: 28px;
-  color: var(--surface-text-muted);
   border-radius: 6px;
+  color: var(--surface-text-muted);
   transition: all 0.2s ease;
 }
 
@@ -147,5 +163,27 @@ defineEmits<{
 .panel-leave-to {
   opacity: 0;
   transform: translateX(-8px);
+}
+
+/* 小屏幕适配 */
+@media (width <= 480px) {
+  .side-panel {
+    left: 64px;
+    width: calc(100vw - 76px);
+  }
+}
+
+/* 减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .panel-enter-active,
+  .panel-leave-active {
+    transition: none;
+  }
+
+  .panel-enter-from,
+  .panel-leave-to {
+    opacity: 0;
+    transform: none;
+  }
 }
 </style>

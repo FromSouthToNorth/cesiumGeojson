@@ -8,14 +8,17 @@ import { defineStore } from 'pinia';
 import { BoundingSphere, Cartesian3, Cartographic, Color, EllipsoidGeodesic } from 'cesium';
 import { message } from 'ant-design-vue';
 import { useCesiumStore } from './cesiumStore';
-import { usePathDrawing } from '@/utils/cesium/usePathDrawing';
-import { calcPathDistances } from '@/utils/cesium/usePathMeasure';
-import { samplePathProfile } from '@/utils/cesium/usePathProfile';
-import { isValidViewer, genId } from '@/utils/cesium/clipCommon';
-import { useClipHistory } from '@/utils/cesium/useClipHistory';
-import { usePathEditing } from '@/utils/cesium/usePathEditing';
-import { usePathPlayback } from '@/utils/cesium/usePathPlayback';
+import { usePathDrawing } from '@/utils/cesium/path/usePathDrawing';
+import { useSnapping } from '@/utils/cesium/shared/useSnapping';
+import type { SnapSource } from '@/utils/cesium/shared/useSnapping';
+import { calcPathDistances } from '@/utils/cesium/path/usePathMeasure';
+import { samplePathProfile } from '@/utils/cesium/path/usePathProfile';
+import { isValidViewer, genId } from '@/utils/cesium/shared/common';
+import { useClipHistory } from '@/utils/cesium/terrain-clip/useClipHistory';
+import { usePathEditing } from '@/utils/cesium/path/usePathEditing';
+import { usePathPlayback } from '@/utils/cesium/path/usePathPlayback';
 import type { GeoPath, GeoPathType, GeoPathJSON } from '@/types/geoPath';
+import { useGeoPolygonStore } from './geoPolygonStore';
 
 /** 自动分配的路径颜色 */
 const PATH_COLORS = ['#FF4D4F', '#52C41A', '#1890FF', '#FAAD14', '#722ED1', '#13C2C2', '#EB2F96', '#FA541C'];
@@ -42,7 +45,7 @@ function interpolatePositionsAtDistances(
   positions: Cartesian3[],
   targetDistances: number[],
   segmentDistances: number[],
-  totalDistance: number,
+  _totalDistance: number,
 ): Cartesian3[] {
   const cartos = positions.map((p) => Cartographic.fromCartesian(p));
   const result: Cartesian3[] = [];
@@ -81,6 +84,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   const isDrawing = ref(false);
   const isEditing = ref(false);
   const profileLoading = ref(false);
+  const snappingEnabled = ref(true);
 
   /** 当前选中的路径 */
   const activePath = computed(() => paths.value.find((p) => p.id === activePathId.value) ?? null);
@@ -104,13 +108,58 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   });
 
   /* ==============================
-   *  绘制 composable
+   *  绘制 composable + 吸附
    * ============================== */
+
+  const pathSnapping = useSnapping({
+    viewer,
+    enabled: snappingEnabled,
+    pixelThreshold: 12,
+    collectTargets: () => {
+      const targets: SnapSource[] = [];
+      // 收集所有已有路径的顶点和边中点
+      paths.value.forEach((p) => {
+        const pos = p.positions;
+        // 顶点
+        pos.forEach((pt) => targets.push({ position: pt, sourceType: 'path' }));
+        // 边中点（开放路径：n-1 条边）
+        for (let i = 0; i < pos.length - 1; i++) {
+          const mid = Cartesian3.midpoint(pos[i], pos[i + 1], new Cartesian3());
+          targets.push({ position: mid, sourceType: 'path', isMidpoint: true });
+        }
+      });
+      // 跨 store 收集多边形顶点和边中点
+      try {
+        const polyStore = useGeoPolygonStore();
+        polyStore.polygons.forEach((p) => {
+          const pos = p.positions;
+          const n = pos.length;
+          // 顶点
+          pos.forEach((pt) => targets.push({ position: pt, sourceType: 'polygon' }));
+          // 边中点（闭合多边形：n 条边）
+          for (let i = 0; i < n; i++) {
+            const next = (i + 1) % n;
+            const mid = Cartesian3.midpoint(pos[i], pos[next], new Cartesian3());
+            targets.push({ position: mid, sourceType: 'polygon', isMidpoint: true });
+          }
+        });
+      } catch {
+        // geoPolygonStore 可能尚未初始化
+      }
+      return targets;
+    },
+  });
 
   const drawing = usePathDrawing({
     viewer,
     positions,
     color: () => activePath.value?.color ?? '#1890FF',
+    snapping: {
+      findSnapTarget: pathSnapping.findSnapTarget,
+      setup: pathSnapping.setup,
+      teardown: pathSnapping.teardown,
+      invalidateCache: pathSnapping.invalidateCache,
+    },
     onFinish: async () => {
       await finishDraw();
     },
@@ -304,6 +353,16 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     });
   }
 
+  /** 批量切换所有路径显隐 */
+  function toggleAllVisibility() {
+    const targetShow = !paths.value.every((p) => p.show);
+    paths.value.forEach((p) => {
+      if (p.show !== targetShow) {
+        toggleVisibility(p.id);
+      }
+    });
+  }
+
   /** 更新路径属性 */
   function updatePath(id: string, data: { name?: string; type?: GeoPathType; description?: string }) {
     const path = paths.value.find((p) => p.id === id);
@@ -420,7 +479,6 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     // 有高程剖面：分段着色
     const { distances, elevations } = path.elevationProfile;
     const { minElevation, maxElevation } = path.elevationProfile;
-    const totalDist = distances[distances.length - 1] || 1;
 
     // 计算原始路径的每段距离
     const cartos = path.positions.map((p) => Cartographic.fromCartesian(p));
@@ -439,8 +497,8 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     for (let i = 0; i < profilePositions.length - 1 && i < elevations.length - 1; i += batchSize) {
       const end = Math.min(i + batchSize + 1, profilePositions.length);
       const batchPos = profilePositions.slice(i, end);
-      const avgElev = elevations.slice(i, Math.min(i + batchSize, elevations.length - 1) + 1)
-        .reduce((a, b) => a + b, 0) / (end - i);
+      const avgElev =
+        elevations.slice(i, Math.min(i + batchSize, elevations.length - 1) + 1).reduce((a, b) => a + b, 0) / (end - i);
       const segColor = elevationToColor(avgElev, minElevation, maxElevation);
 
       v.entities.add({
@@ -509,9 +567,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
       const coords = feature.geometry.coordinates;
       if (coords.length < 2) return;
 
-      const pathPositions = coords.map(
-        ([lng, lat, h]) => Cartesian3.fromDegrees(lng, lat, h ?? 0),
-      );
+      const pathPositions = coords.map(([lng, lat, h]) => Cartesian3.fromDegrees(lng, lat, h ?? 0));
 
       const path: GeoPath = {
         id: genId(),
@@ -547,6 +603,8 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     isDrawing,
     profileLoading,
     expandedIds,
+    snappingEnabled,
+    isSnapping: pathSnapping.isSnapping,
     // computed
     activePath,
     hasPaths,
@@ -558,6 +616,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     removePath,
     clearAll,
     toggleVisibility,
+    toggleAllVisibility,
     updatePath,
     flyToPath,
     // editing

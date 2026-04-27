@@ -61,9 +61,7 @@ export async function samplePathProfile(
     const dLat = (end.latitude - start.latitude) / steps;
 
     for (let j = 0; j < steps; j++) {
-      sampleCartos.push(
-        new Cartographic(start.longitude + dLon * j, start.latitude + dLat * j, 0),
-      );
+      sampleCartos.push(new Cartographic(start.longitude + dLon * j, start.latitude + dLat * j, 0));
     }
   }
   // 确保终点被包含
@@ -71,9 +69,7 @@ export async function samplePathProfile(
 
   // 4. 批量采样地形高程
   const sampled = await sampleTerrain(terrainProvider, terrainLevel, sampleCartos);
-  const validElevations = sampled
-    .map((c) => c.height)
-    .filter((h): h is number => h != null && isFinite(h));
+  const validElevations = sampled.map((c) => c.height).filter((h): h is number => h != null && isFinite(h));
 
   if (validElevations.length < 2) {
     // 采样失败，返回基础数据

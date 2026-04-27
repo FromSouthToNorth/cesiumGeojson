@@ -9,12 +9,12 @@ import {
   ClippingPolygonCollection,
 } from 'cesium';
 import { useCesiumStore } from './cesiumStore';
-import { isValidViewer, genId } from '@/utils/cesium/clipCommon';
-import { useClipDrawing } from '@/utils/cesium/useClipDrawing';
-import { useClipEditing } from '@/utils/cesium/useClipEditing';
-import { useClipHistory } from '@/utils/cesium/useClipHistory';
-import { useClipPersistence } from '@/utils/cesium/useClipPersistence';
-import type { ClipRegion } from '@/utils/cesium/clipCommon';
+import { isValidViewer, genId } from '@/utils/cesium/shared/common';
+import { useClipDrawing } from '@/utils/cesium/terrain-clip/useClipDrawing';
+import { useClipEditing } from '@/utils/cesium/terrain-clip/useClipEditing';
+import { useClipHistory } from '@/utils/cesium/terrain-clip/useClipHistory';
+import { useClipPersistence } from '@/utils/cesium/terrain-clip/useClipPersistence';
+import type { ClipRegion } from '@/utils/cesium/shared/common';
 
 /**
  * 地形裁切 Store

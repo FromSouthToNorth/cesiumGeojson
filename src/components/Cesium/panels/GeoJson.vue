@@ -13,16 +13,16 @@
     </Upload>
 
     <div v-if="geoJsonStore.layers.length" class="layers-section">
-      <div class="layers-toolbar">
-        <span class="layers-count">共 {{ geoJsonStore.layers.length }} 个图层</span>
-        <InputSearch
-          v-model:value="searchQuery"
-          placeholder="搜索图层名称"
-          allow-clear
-          size="small"
-          class="layer-search"
-        />
-      </div>
+      <ListToolbar
+        :count="geoJsonStore.layers.length"
+        :all-visible="geoJsonStore.layers.length > 0 && geoJsonStore.layers.every((l) => l.show)"
+        :search-query="searchQuery"
+        search-placeholder="搜索图层"
+        item-name="图层"
+        @toggle-all-visibility="geoJsonStore.toggleAllVisibility()"
+        @remove-all="geoJsonStore.removeAllLayers()"
+        @update:search-query="searchQuery = $event"
+      />
 
       <div ref="scrollRef" class="layers-scroll">
         <Collapse v-model:active-key="activeKeys" ghost destroy-inactive-panel>
@@ -37,7 +37,13 @@
                 </div>
                 <div class="layer-actions">
                   <Tooltip title="定位图层">
-                    <Button type="text" size="small" class="action-btn" @click.stop="geoJsonStore.flyToLayer(layer.id)">
+                    <Button
+                      type="text"
+                      size="small"
+                      class="action-btn"
+                      aria-label="定位图层"
+                      @click.stop="geoJsonStore.flyToLayer(layer.id)"
+                    >
                       <EnvironmentOutlined />
                     </Button>
                   </Tooltip>
@@ -46,6 +52,7 @@
                       type="text"
                       size="small"
                       class="action-btn"
+                      :aria-label="layer.show ? '隐藏图层' : '显示图层'"
                       @click.stop="geoJsonStore.toggleLayerVisibility(layer.id)"
                     >
                       <EyeOutlined v-if="layer.show" />
@@ -57,7 +64,7 @@
                     placement="topRight"
                     @confirm.stop="geoJsonStore.removeLayer(layer.id)"
                   >
-                    <Button type="text" danger size="small" class="action-btn" @click.stop>
+                    <Button type="text" danger size="small" class="action-btn" aria-label="删除图层" @click.stop>
                       <DeleteOutlined />
                     </Button>
                   </Popconfirm>
@@ -83,6 +90,7 @@
                           type="text"
                           size="small"
                           class="action-btn"
+                          aria-label="查看属性"
                           @click.stop="toggleFeatureProperties(item.id)"
                         >
                           <InfoCircleOutlined />
@@ -93,6 +101,7 @@
                           type="text"
                           size="small"
                           class="action-btn"
+                          aria-label="定位要素"
                           @click.stop="geoJsonStore.flyToFeature(item.entity)"
                         >
                           <AimOutlined />
@@ -101,19 +110,21 @@
                     </div>
                   </ListItem>
 
-                  <div
-                    v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
-                    class="feature-properties"
-                  >
-                    <Descriptions bordered :column="1" size="small">
-                      <DescriptionsItem v-for="(val, key) in item.properties" :key="key" :label="String(key)">
-                        <span class="property-value" :title="String(val)">{{ val }}</span>
-                      </DescriptionsItem>
-                    </Descriptions>
-                  </div>
-                  <div v-else-if="expandedFeatureIds.has(item.id)" class="feature-properties-empty">
-                    <Empty description="暂无属性" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
-                  </div>
+                  <Transition name="expand">
+                    <div
+                      v-if="expandedFeatureIds.has(item.id) && Object.keys(item.properties || {}).length"
+                      class="feature-properties"
+                    >
+                      <Descriptions bordered :column="1" size="small">
+                        <DescriptionsItem v-for="(val, key) in item.properties" :key="key" :label="String(key)">
+                          <span class="property-value" :title="String(val)">{{ val }}</span>
+                        </DescriptionsItem>
+                      </Descriptions>
+                    </div>
+                    <div v-else-if="expandedFeatureIds.has(item.id)" class="feature-properties-empty">
+                      <Empty description="暂无属性" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
+                    </div>
+                  </Transition>
                 </div>
               </template>
             </List>
@@ -131,6 +142,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, useTemplateRef } from 'vue';
 import { useGeoJsonStore } from '@/stores/geojsonStore';
+import { useListSearch } from '@/utils/useListSearch';
 import {
   Button,
   Upload,
@@ -140,7 +152,6 @@ import {
   Tooltip,
   Popconfirm,
   Empty,
-  Input,
   Descriptions,
 } from 'ant-design-vue';
 import {
@@ -153,22 +164,24 @@ import {
   EyeInvisibleOutlined,
 } from '@ant-design/icons-vue';
 import { SidePanel } from '.';
+import { ListToolbar } from '../shared';
 
 defineOptions({ name: 'GeoJson' });
 
 defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 
-const InputSearch = Input.Search;
 const ListItem = List.Item;
 const DescriptionsItem = Descriptions.Item;
 
 const geoJsonStore = useGeoJsonStore();
 const activeKeys = ref<string[]>([]); // 展开的 CollapsePanel key
-const searchQuery = ref(''); // 搜索关键词
 const isUploading = ref(false);
 const scrollRef = useTemplateRef<HTMLDivElement>('scrollRef');
 const expandedFeatureIds = ref<Set<string>>(new Set()); // 已展开属性的要素
+
+/** 搜索过滤 */
+const { searchQuery, filteredItems: filteredLayers } = useListSearch(computed(() => geoJsonStore.layers));
 
 /** 切换要素属性的展开/收起 */
 function toggleFeatureProperties(featureId: string) {
@@ -177,13 +190,6 @@ function toggleFeatureProperties(featureId: string) {
   else next.add(featureId);
   expandedFeatureIds.value = next;
 }
-
-/** 根据搜索词过滤图层列表 */
-const filteredLayers = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase();
-  if (!query) return geoJsonStore.layers;
-  return geoJsonStore.layers.filter((layer) => layer.name.toLowerCase().includes(query));
-});
 
 /** 新图层添加时自动展开并滚动到顶部 */
 watch(
@@ -218,24 +224,6 @@ const handleUpload = async (file: File) => {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-}
-
-.layers-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.layers-count {
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.layer-search {
-  width: 180px;
 }
 
 .layers-scroll {
@@ -435,5 +423,26 @@ const handleUpload = async (file: File) => {
 
 :deep(.ant-empty) {
   margin: 32px 0;
+}
+
+/* 属性展开/收起过渡 */
+.expand-enter-active,
+.expand-leave-active {
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.expand-enter-to,
+.expand-leave-from {
+  opacity: 1;
+  max-height: 300px;
 }
 </style>

@@ -11,9 +11,9 @@ import type { SlopeAnalysisResult, SlopeGridPoint } from '@/types/geoPolygon';
 function pointInPolygon(lon: number, lat: number, verts: { lon: number; lat: number }[]): boolean {
   let inside = false;
   for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
-    const pi = verts[i], pj = verts[j];
-    if ((pi.lat > lat) !== (pj.lat > lat) &&
-      lon < ((pj.lon - pi.lon) * (lat - pi.lat) / (pj.lat - pi.lat) + pi.lon)) {
+    const pi = verts[i],
+      pj = verts[j];
+    if (pi.lat > lat !== pj.lat > lat && lon < ((pj.lon - pi.lon) * (lat - pi.lat)) / (pj.lat - pi.lat) + pi.lon) {
       inside = !inside;
     }
   }
@@ -28,10 +28,11 @@ function sphericalArea(positions: Cartographic[]): number {
   let sum = 0;
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    sum += (positions[j].longitude - positions[i].longitude)
-      * (2 + Math.sin(positions[i].latitude) + Math.sin(positions[j].latitude));
+    sum +=
+      (positions[j].longitude - positions[i].longitude) *
+      (2 + Math.sin(positions[i].latitude) + Math.sin(positions[j].latitude));
   }
-  return Math.abs(sum * R * R / 2);
+  return Math.abs((sum * R * R) / 2);
 }
 
 export interface SlopeAnalysisOptions {
@@ -69,13 +70,15 @@ export async function analyzePolygonSlope(
   if (polyArea > MAX_AREA) {
     throw new Error(
       `AREA_TOO_LARGE:多边形面积 ${(polyArea / 1_000_000).toFixed(1)} km² 超出建议范围（≤${MAX_AREA / 1_000_000} km²），` +
-      '过大的区域可能导致浏览器卡顿或分析失败，建议拆分为更小的区域'
+        '过大的区域可能导致浏览器卡顿或分析失败，建议拆分为更小的区域',
     );
   }
 
   // 1. 包围盒
-  let minLon = Infinity, maxLon = -Infinity;
-  let minLat = Infinity, maxLat = -Infinity;
+  let minLon = Infinity,
+    maxLon = -Infinity;
+  let minLat = Infinity,
+    maxLat = -Infinity;
   for (const p of positions) {
     if (p.longitude < minLon) minLon = p.longitude;
     if (p.longitude > maxLon) maxLon = p.longitude;
@@ -166,15 +169,29 @@ export async function analyzePolygonSlope(
       if (z == null) continue;
 
       // 需要 3x3 窗口全部有效
-      const zNW = grid[r - 1][c - 1], zN = grid[r - 1][c], zNE = grid[r - 1][c + 1];
-      const zW = grid[r][c - 1], zE = grid[r][c + 1];
-      const zSW = grid[r + 1][c - 1], zS = grid[r + 1][c], zSE = grid[r + 1][c + 1];
-      if (zNW == null || zN == null || zNE == null || zW == null || zE == null ||
-        zSW == null || zS == null || zSE == null) continue;
+      const zNW = grid[r - 1][c - 1],
+        zN = grid[r - 1][c],
+        zNE = grid[r - 1][c + 1];
+      const zW = grid[r][c - 1],
+        zE = grid[r][c + 1];
+      const zSW = grid[r + 1][c - 1],
+        zS = grid[r + 1][c],
+        zSE = grid[r + 1][c + 1];
+      if (
+        zNW == null ||
+        zN == null ||
+        zNE == null ||
+        zW == null ||
+        zE == null ||
+        zSW == null ||
+        zS == null ||
+        zSE == null
+      )
+        continue;
 
       // Horn 算法
-      const dx = ((zNE + 2 * zE + zSE) - (zNW + 2 * zW + zSW)) / (8 * gridSpacing);
-      const dy = ((zSW + 2 * zS + zSE) - (zNW + 2 * zN + zNE)) / (8 * gridSpacing);
+      const dx = (zNE + 2 * zE + zSE - (zNW + 2 * zW + zSW)) / (8 * gridSpacing);
+      const dy = (zSW + 2 * zS + zSE - (zNW + 2 * zN + zNE)) / (8 * gridSpacing);
       const slopeVal = Math.sqrt(dx * dx + dy * dy);
       const slopePercent = slopeVal * 100;
       const slopeAngle = Math.atan(slopeVal) * (180 / Math.PI); // 转为角度 °
@@ -207,7 +224,9 @@ export async function analyzePolygonSlope(
   const avgAngle = allAngles.reduce((s, v) => s + v, 0) / allAngles.length;
 
   // 坡度分类：基于角度阈值（5° 以下平缓，5-15° 中等，15° 以上陡峭）
-  let gentle = 0, moderate = 0, steep = 0;
+  let gentle = 0,
+    moderate = 0,
+    steep = 0;
   for (const a of allAngles) {
     if (a < 5) gentle++;
     else if (a < 15) moderate++;

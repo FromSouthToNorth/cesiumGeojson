@@ -62,16 +62,17 @@ function formatElevation(v: VertexRow): string {
 
 function formatAll() {
   const header = '#\t经度\t纬度\t海拔';
-  const rows = props.vertices.map((v, i) =>
-    `${i + 1}\t${v.lng.toFixed(5)}\t${v.lat.toFixed(5)}\t${formatElevation(v)}`,
+  const rows = props.vertices.map(
+    (v, i) => `${i + 1}\t${v.lng.toFixed(5)}\t${v.lat.toFixed(5)}\t${formatElevation(v)}`,
   );
   return [header, ...rows].join('\n');
 }
 
 function formatCsv() {
   const header = '#,经度,纬度,海拔';
-  const rows = props.vertices.map((v, i) =>
-    `${i + 1},${v.lng.toFixed(5)},${v.lat.toFixed(5)},${v.elevation !== null && v.elevation !== undefined ? v.elevation.toFixed(1) : v.height.toFixed(1)}`,
+  const rows = props.vertices.map(
+    (v, i) =>
+      `${i + 1},${v.lng.toFixed(5)},${v.lat.toFixed(5)},${v.elevation !== null && v.elevation !== undefined ? v.elevation.toFixed(1) : v.height.toFixed(1)}`,
   );
   return '﻿' + [header, ...rows].join('\n');
 }
@@ -126,25 +127,25 @@ function handleCsv() {
 
 .vertex-table {
   width: 100%;
-  border-collapse: collapse;
   font-size: 11px;
+  border-collapse: collapse;
 }
 
 .vertex-table th,
 .vertex-table td {
   padding: 3px 6px;
-  text-align: right;
   border-bottom: 1px solid var(--surface-border);
+  text-align: right;
 }
 
 .vertex-table th {
   position: sticky;
   top: 0;
-  background: var(--surface-bg-secondary, var(--surface-bg));
-  font-weight: 600;
-  color: var(--surface-text-muted);
-  text-align: right;
   z-index: 1;
+  background: var(--surface-bg-secondary, var(--surface-bg));
+  color: var(--surface-text-muted);
+  font-weight: 600;
+  text-align: right;
 }
 
 .vertex-table td:first-child,

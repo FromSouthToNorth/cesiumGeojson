@@ -12,7 +12,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
 import type { Viewer } from 'cesium';
-import { createViewer } from '@/utils/cesium';
+import { createViewer } from '@/utils/cesium/viewer';
 import { useCesiumStore } from '@/stores/cesiumStore';
 import Toolbox from './Toolbox.vue';
 import CesiumNavigation from './CesiumNavigation.vue';

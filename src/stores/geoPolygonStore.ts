@@ -19,12 +19,15 @@ import {
 } from 'cesium';
 import { message } from 'ant-design-vue';
 import { useCesiumStore } from './cesiumStore';
-import { usePolygonDrawing, calcPolygonMeasure } from '@/utils/cesium/usePolygonDrawing';
-import { isValidViewer, genId } from '@/utils/cesium/clipCommon';
-import { useClipHistory } from '@/utils/cesium/useClipHistory';
-import { usePolygonEditing } from '@/utils/cesium/usePolygonEditing';
+import { usePolygonDrawing, calcPolygonMeasure } from '@/utils/cesium/polygon/usePolygonDrawing';
+import { useSnapping } from '@/utils/cesium/shared/useSnapping';
+import type { SnapSource } from '@/utils/cesium/shared/useSnapping';
+import { isValidViewer, genId } from '@/utils/cesium/shared/common';
+import { useClipHistory } from '@/utils/cesium/terrain-clip/useClipHistory';
+import { usePolygonEditing } from '@/utils/cesium/polygon/usePolygonEditing';
 import type { GeoPolygon, GeoPolygonJSON, SlopeAnalysisResult } from '@/types/geoPolygon';
-import { analyzePolygonSlope } from '@/utils/cesium/usePolygonSlope';
+import { analyzePolygonSlope } from '@/utils/cesium/polygon/usePolygonSlope';
+import { useGeoPathStore } from './geoPathStore';
 
 /** 自动分配的多边形颜色 */
 const POLYGON_COLORS = ['#FF4D4F', '#52C41A', '#1890FF', '#FAAD14', '#722ED1', '#13C2C2', '#EB2F96', '#FA541C'];
@@ -48,6 +51,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   const positions = ref<import('cesium').Cartesian3[]>([]);
   const isDrawing = ref(false);
   const isEditing = ref(false);
+  const snappingEnabled = ref(true);
 
   const activePolygon = computed(() => polygons.value.find((p) => p.id === activePolygonId.value) ?? null);
   const hasPolygons = computed(() => polygons.value.length > 0);
@@ -95,12 +99,57 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   const clippingInverse = ref(false);
 
   /* ==============================
-   *  绘制 composable
+   *  绘制 composable + 吸附
    * ============================== */
+
+  const polygonSnapping = useSnapping({
+    viewer,
+    enabled: snappingEnabled,
+    pixelThreshold: 12,
+    collectTargets: () => {
+      const targets: SnapSource[] = [];
+      // 收集所有已有勘测区域的顶点和边中点
+      polygons.value.forEach((p) => {
+        const pos = p.positions;
+        const n = pos.length;
+        // 顶点
+        pos.forEach((pt) => targets.push({ position: pt, sourceType: 'polygon' }));
+        // 边中点（闭合多边形：n 条边）
+        for (let i = 0; i < n; i++) {
+          const next = (i + 1) % n;
+          const mid = Cartesian3.midpoint(pos[i], pos[next], new Cartesian3());
+          targets.push({ position: mid, sourceType: 'polygon', isMidpoint: true });
+        }
+      });
+      // 跨 store 收集路径顶点和边中点
+      try {
+        const pathStore = useGeoPathStore();
+        pathStore.paths.forEach((p) => {
+          const pos = p.positions;
+          // 顶点
+          pos.forEach((pt) => targets.push({ position: pt, sourceType: 'path' }));
+          // 边中点（开放路径：n-1 条边）
+          for (let i = 0; i < pos.length - 1; i++) {
+            const mid = Cartesian3.midpoint(pos[i], pos[i + 1], new Cartesian3());
+            targets.push({ position: mid, sourceType: 'path', isMidpoint: true });
+          }
+        });
+      } catch {
+        // geoPathStore 可能尚未初始化
+      }
+      return targets;
+    },
+  });
 
   const drawing = usePolygonDrawing({
     viewer,
     positions,
+    snapping: {
+      findSnapTarget: polygonSnapping.findSnapTarget,
+      setup: polygonSnapping.setup,
+      teardown: polygonSnapping.teardown,
+      invalidateCache: polygonSnapping.invalidateCache,
+    },
     onFinish: async (result) => {
       await finishDraw(result);
     },
@@ -188,7 +237,9 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     createPolygonEntity(polygon);
     // 异步采样顶点地形高程
     sampleVertexElevation(polygon);
-    message.success(`"${polygon.name}" 测量完成，面积 ${formatArea(result.area)}，周长 ${formatDist(result.perimeter)}`);
+    message.success(
+      `"${polygon.name}" 测量完成，面积 ${formatArea(result.area)}，周长 ${formatDist(result.perimeter)}`,
+    );
   }
 
   /** 采样多边形各顶点的地形高程 */
@@ -265,6 +316,16 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     }
   }
 
+  /** 批量切换所有多边形显隐 */
+  function toggleAllVisibility() {
+    const targetShow = !polygons.value.every((p) => p.show);
+    polygons.value.forEach((p) => {
+      if (p.show !== targetShow) {
+        toggleVisibility(p.id);
+      }
+    });
+  }
+
   /** 更新多边形名称 */
   function updatePolygonName(id: string, name: string) {
     const polygon = polygons.value.find((p) => p.id === id);
@@ -305,9 +366,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     const v = toRaw(viewer.value);
     if (!isValidViewer(v)) return;
 
-    const clippingPolys = polygons.value.filter(
-      (p) => p.clipping && p.positions.length >= 3,
-    );
+    const clippingPolys = polygons.value.filter((p) => p.clipping && p.positions.length >= 3);
 
     if (clippingPolys.length === 0) {
       v.scene.globe.clippingPolygons = new ClippingPolygonCollection();
@@ -587,7 +646,10 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   /** 导出当前多边形顶点坐标为 CSV */
   function exportVerticesCsv() {
     const poly = activePolygon.value;
-    if (!poly) { message.warning('请先选中一个多边形'); return; }
+    if (!poly) {
+      message.warning('请先选中一个多边形');
+      return;
+    }
 
     const rows = [['#', '经度', '纬度', '椭球高', '海拔'].join(',')];
     poly.positions.forEach((pos, i) => {
@@ -633,9 +695,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       const ring = feature.geometry.coordinates[0];
       if (ring.length < 4) return; // 至少 3 个顶点（首尾闭合需 4 个点）
       // 跳过闭合点（首尾相同）
-      const polyPositions = ring.slice(0, -1).map(
-        ([lng, lat, h]) => Cartesian3.fromDegrees(lng, lat, h ?? 0),
-      );
+      const polyPositions = ring.slice(0, -1).map(([lng, lat, h]) => Cartesian3.fromDegrees(lng, lat, h ?? 0));
 
       if (polyPositions.length < 3) return;
 
@@ -668,6 +728,8 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     positions,
     isDrawing,
     showLabels,
+    snappingEnabled,
+    isSnapping: polygonSnapping.isSnapping,
     // computed
     activePolygon,
     hasPolygons,
@@ -680,6 +742,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     removePolygon,
     clearAll,
     toggleVisibility,
+    toggleAllVisibility,
     updatePolygonName,
     flyToPolygon,
     // editing

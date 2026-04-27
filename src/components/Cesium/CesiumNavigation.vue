@@ -6,23 +6,23 @@
   <div class="cesium-navigation">
     <div class="nav-group">
       <Tooltip title="切换主题" placement="left">
-        <Button class="nav-btn" @click="themeStore.toggle">
+        <Button class="nav-btn" aria-label="切换主题" @click="themeStore.toggle">
           <BulbOutlined v-if="themeStore.isDark" />
           <BulbFilled v-else />
         </Button>
       </Tooltip>
       <Tooltip title="飞行至初始视野" placement="left">
-        <Button class="nav-btn" @click="handleHome">
+        <Button class="nav-btn" aria-label="飞行至初始视野" @click="handleHome">
           <HomeOutlined />
         </Button>
       </Tooltip>
       <Tooltip title="缩小" placement="left">
-        <Button class="nav-btn" @click="handleZoomOut">
+        <Button class="nav-btn" aria-label="缩小" @click="handleZoomOut">
           <MinusOutlined />
         </Button>
       </Tooltip>
       <Tooltip title="放大" placement="left">
-        <Button class="nav-btn" @click="handleZoomIn">
+        <Button class="nav-btn" aria-label="放大" @click="handleZoomIn">
           <PlusOutlined />
         </Button>
       </Tooltip>
@@ -71,7 +71,7 @@ const handleZoomOut = () => {
   position: absolute;
   top: 42px;
   right: 12px;
-  z-index: 10;
+  z-index: 100;
   display: flex;
   flex-shrink: 0;
   align-items: flex-start;

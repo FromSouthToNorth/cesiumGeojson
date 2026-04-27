@@ -6,7 +6,7 @@
 <template>
   <SidePanel :visible="visible" title="添加观测点" @update:visible="emit('update:visible', $event)">
     <Form layout="vertical" :model="form">
-      <Form.Item label="经度 (Longitude)" required>
+      <Form.Item label="经度 (Longitude)" required :validate-status="validation.lng.status" :help="validation.lng.help">
         <InputNumber
           v-model:value="form.lng"
           :min="-180"
@@ -15,9 +15,10 @@
           :precision="6"
           style="width: 100%"
           placeholder="例如: 116.397"
+          @blur="validateLng"
         />
       </Form.Item>
-      <Form.Item label="纬度 (Latitude)" required>
+      <Form.Item label="纬度 (Latitude)" required :validate-status="validation.lat.status" :help="validation.lat.help">
         <InputNumber
           v-model:value="form.lat"
           :min="-90"
@@ -26,9 +27,14 @@
           :precision="6"
           style="width: 100%"
           placeholder="例如: 39.908"
+          @blur="validateLat"
         />
       </Form.Item>
-      <Form.Item label="海拔 (Height) 米 — 留空自动使用地形高度">
+      <Form.Item
+        label="海拔 (Height) 米 — 留空自动使用地形高度"
+        :validate-status="validation.alt.status"
+        :help="validation.alt.help"
+      >
         <InputNumber
           v-model:value="form.alt"
           :min="-1000"
@@ -36,7 +42,11 @@
           :step="1"
           style="width: 100%"
           placeholder="留空则采样地形高度"
+          @blur="validateAlt"
         />
+      </Form.Item>
+      <Form.Item>
+        <Checkbox v-model:checked="keepOpen">保持面板开启（连续创建）</Checkbox>
       </Form.Item>
       <Form.Item>
         <Checkbox v-model:checked="autoRotate">创建后自动围绕旋转</Checkbox>
@@ -102,6 +112,7 @@ const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 const cesiumStore = useCesiumStore();
 const isCreating = ref(false);
 const autoRotate = ref(true);
+const keepOpen = ref(false); // 连续创建模式：保持面板开启
 const isRotating = ref(false); // 是否正在自动旋转
 const rotatingPointId = ref<number | null>(null); // 当前旋转的点 ID
 const points = ref<PointRecord[]>([]); // 已创建的所有点
@@ -112,6 +123,56 @@ const form = reactive({
   lat: null as number | null,
   alt: null as number | null,
 });
+
+/** 表单字段验证状态 */
+const validation = reactive({
+  lng: { status: '' as '' | 'error', help: '' },
+  lat: { status: '' as '' | 'error', help: '' },
+  alt: { status: '' as '' | 'error', help: '' },
+});
+
+/** 验证经度 */
+function validateLng() {
+  if (form.lng === null) {
+    validation.lng = { status: 'error', help: '请输入经度' };
+    return false;
+  }
+  if (form.lng < -180 || form.lng > 180) {
+    validation.lng = { status: 'error', help: '经度范围应为 -180 ~ 180' };
+    return false;
+  }
+  validation.lng = { status: '', help: '' };
+  return true;
+}
+
+/** 验证纬度 */
+function validateLat() {
+  if (form.lat === null) {
+    validation.lat = { status: 'error', help: '请输入纬度' };
+    return false;
+  }
+  if (form.lat < -90 || form.lat > 90) {
+    validation.lat = { status: 'error', help: '纬度范围应为 -90 ~ 90' };
+    return false;
+  }
+  validation.lat = { status: '', help: '' };
+  return true;
+}
+
+/** 验证海拔 */
+function validateAlt() {
+  if (form.alt !== null && (form.alt < -1000 || form.alt > 90000)) {
+    validation.alt = { status: 'error', help: '海拔范围应为 -1000 ~ 90000 米' };
+    return false;
+  }
+  validation.alt = { status: '', help: '' };
+  return true;
+}
+
+/** 验证整个表单 */
+function validateForm(): boolean {
+  return validateLng() && validateLat() && validateAlt();
+}
 
 /* ───────── 旋转控制 ───────── */
 
@@ -212,8 +273,7 @@ function flyToPoint(p: PointRecord) {
 /* ───────── 创建点位 ───────── */
 
 async function handleCreate() {
-  if (form.lng === null || form.lat === null) {
-    message.warning('请填写经度和纬度');
+  if (!validateForm()) {
     return;
   }
 
@@ -277,7 +337,9 @@ async function handleCreate() {
     });
 
     message.success(`点位已创建 (海拔: ${height.toFixed(1)} m)`);
-    emit('update:visible', false);
+    if (!keepOpen.value) {
+      emit('update:visible', false);
+    }
   } catch (err) {
     console.error('创建点位失败:', err);
     message.error('创建点位失败');

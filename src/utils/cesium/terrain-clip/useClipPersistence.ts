@@ -1,6 +1,6 @@
 import { Cartesian3 } from 'cesium';
 import type { Ref } from 'vue';
-import type { ClipRegion, PersistedData } from './clipCommon';
+import type { ClipRegion, PersistedData } from '../shared/common';
 
 /**
  * 持久化 —— localStorage 读写
