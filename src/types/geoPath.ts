@@ -48,6 +48,26 @@ export interface GeoPath {
   createdAt: number;
 }
 
+/* ==============================
+ * 轨迹播放配置
+ * ============================== */
+
+/** 轨迹播放配置 */
+export interface PlaybackOptions {
+  /** 默认速度 m/s */
+  defaultSpeed: number;
+  /** 是否显示尾迹 */
+  showTrail: boolean;
+  /** 尾迹保留点数 */
+  trailLength: number;
+  /** 第三人称跟随距离 (m) */
+  thirdPersonDistance: number;
+  /** 第三人称跟随高度 (m) */
+  thirdPersonHeight: number;
+  /** 第一人称视线高度偏移 (m) */
+  firstPersonHeightOffset: number;
+}
+
 /** GeoJSON 序列化格式（用于导出/导入） */
 export interface GeoPathJSON {
   type: 'FeatureCollection';

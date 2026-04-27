@@ -29,7 +29,7 @@ export async function samplePathProfile(
 ): Promise<ElevationProfile | null> {
   if (positions.length < 2) return null;
 
-  const { interval = 10, terrainLevel = 11 } = options;
+  const { interval = 5, terrainLevel = 13 } = options;
   const ellipsoid = Ellipsoid.WGS84;
 
   // 1. 转换所有顶点为 Cartographic

@@ -21,7 +21,8 @@ import { usePolygonDrawing, calcPolygonMeasure } from '@/utils/cesium/usePolygon
 import { isValidViewer, genId } from '@/utils/cesium/clipCommon';
 import { useClipHistory } from '@/utils/cesium/useClipHistory';
 import { usePolygonEditing } from '@/utils/cesium/usePolygonEditing';
-import type { GeoPolygon, GeoPolygonJSON } from '@/types/geoPolygon';
+import type { GeoPolygon, GeoPolygonJSON, SlopeAnalysisResult } from '@/types/geoPolygon';
+import { analyzePolygonSlope } from '@/utils/cesium/usePolygonSlope';
 
 /** 自动分配的多边形颜色 */
 const POLYGON_COLORS = ['#FF4D4F', '#52C41A', '#1890FF', '#FAAD14', '#722ED1', '#13C2C2', '#EB2F96', '#FA541C'];
@@ -82,6 +83,11 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
 
   /** 标注显隐 */
   const showLabels = ref(true);
+
+  /** 坡度分析 */
+  const slopeLoading = ref(false);
+  const slopeResult = ref<SlopeAnalysisResult | null>(null);
+  const showSlopeGrid = ref(false);
 
   /* ==============================
    *  绘制 composable
@@ -212,7 +218,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     }
     const polygon = polygons.value.find((p) => p.id === id);
     if (polygon) removePolygonEntity(polygon);
-
+    removeSlopeGridEntities(id);
     polygons.value = polygons.value.filter((p) => p.id !== id);
 
     if (activePolygonId.value === id) {
@@ -270,6 +276,50 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   }
 
   /* ==============================
+   *  坡度分析
+   * ============================== */
+
+  function clearSlopeAnalysis() {
+    const id = activePolygonId.value;
+    if (id) removeSlopeGridEntities(id);
+    slopeResult.value = null;
+    slopeLoading.value = false;
+    showSlopeGrid.value = false;
+  }
+
+  async function analyzeSlope(id?: string) {
+    const polyId = id ?? activePolygonId.value;
+    if (!polyId) return;
+    const poly = polygons.value.find((p) => p.id === polyId);
+    if (!poly || poly.positions.length < 3) return;
+
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+
+    slopeLoading.value = true;
+    slopeResult.value = null;
+
+    try {
+      const cartos = poly.positions.map((p) => Cartographic.fromCartesian(p));
+      const result = await analyzePolygonSlope(v.terrainProvider, cartos);
+      console.log('result: ', result);
+      slopeResult.value = result;
+      if (result) {
+        removeSlopeGridEntities(polyId);
+        createSlopeGridEntities(polyId);
+        showSlopeGrid.value = true;
+      } else {
+        message.warning('坡度分析失败，采样点不足');
+      }
+    } catch (err) {
+      console.error('坡度分析出错:', err);
+      message.error('坡度分析失败');
+    } finally {
+      slopeLoading.value = false;
+    }
+  }
+
+  /* ==============================
    *  编辑模式
    * ============================== */
 
@@ -279,6 +329,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     if (!id || isDrawing.value) return;
     const poly = polygons.value.find((p) => p.id === id);
     if (!poly || poly.positions.length < 3) return;
+    clearSlopeAnalysis();
 
     if (activePolygonId.value !== id) {
       activePolygonId.value = id;
@@ -367,6 +418,62 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     if (!isValidViewer(v)) return;
     const entity = v.entities.getById(`geoPolygon_${polygon.id}`);
     if (entity) v.entities.remove(entity);
+  }
+
+  /* ==============================
+   *  坡度网格可视化
+   * ============================== */
+
+  function removeSlopeGridEntities(id: string) {
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    const prefix = `geoPolygon_${id}_slope_`;
+    const toRemove: any[] = [];
+    v.entities.values.forEach((e: any) => {
+      if (e.id && (e.id as string).startsWith(prefix)) toRemove.push(e);
+    });
+    toRemove.forEach((e) => v.entities.remove(e));
+  }
+
+  function createSlopeGridEntities(id: string) {
+    if (!slopeResult.value?.gridPoints.length) return;
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    removeSlopeGridEntities(id);
+
+    const colorMap: Record<string, Color> = {
+      gentle: Color.fromCssColorString('#52C41A'),
+      moderate: Color.fromCssColorString('#FAAD14'),
+      steep: Color.fromCssColorString('#FF4D4F'),
+    };
+
+    slopeResult.value.gridPoints.forEach((pt, i) => {
+      const pos = Cartesian3.fromRadians(pt.lon, pt.lat, pt.height);
+      v.entities.add({
+        id: `geoPolygon_${id}_slope_${i}`,
+        position: pos,
+        point: {
+          pixelSize: 6,
+          color: colorMap[pt.category].withAlpha(0.85),
+          outlineColor: Color.WHITE.withAlpha(0.3),
+          outlineWidth: 1,
+        },
+      });
+    });
+  }
+
+  function toggleSlopeGrid() {
+    showSlopeGrid.value = !showSlopeGrid.value;
+    const polyId = activePolygonId.value;
+    if (!polyId) return;
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    const prefix = `geoPolygon_${polyId}_slope_`;
+    v.entities.values.forEach((e: any) => {
+      if (e.id && (e.id as string).startsWith(prefix)) {
+        e.show = showSlopeGrid.value;
+      }
+    });
   }
 
   /* ==============================
@@ -516,6 +623,13 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     redo,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
+    // slope analysis
+    slopeLoading,
+    slopeResult,
+    showSlopeGrid,
+    analyzeSlope,
+    clearSlopeAnalysis,
+    toggleSlopeGrid,
     // display
     toggleLabels,
     exportVerticesCsv,

@@ -5,7 +5,7 @@
 
 import { ref, computed, toRaw } from 'vue';
 import { defineStore } from 'pinia';
-import { BoundingSphere, Cartesian3, Cartographic, Color } from 'cesium';
+import { BoundingSphere, Cartesian3, Cartographic, Color, EllipsoidGeodesic } from 'cesium';
 import { message } from 'ant-design-vue';
 import { useCesiumStore } from './cesiumStore';
 import { usePathDrawing } from '@/utils/cesium/usePathDrawing';
@@ -14,6 +14,7 @@ import { samplePathProfile } from '@/utils/cesium/usePathProfile';
 import { isValidViewer, genId } from '@/utils/cesium/clipCommon';
 import { useClipHistory } from '@/utils/cesium/useClipHistory';
 import { usePathEditing } from '@/utils/cesium/usePathEditing';
+import { usePathPlayback } from '@/utils/cesium/usePathPlayback';
 import type { GeoPath, GeoPathType, GeoPathJSON } from '@/types/geoPath';
 
 /** 自动分配的路径颜色 */
@@ -21,6 +22,45 @@ const PATH_COLORS = ['#FF4D4F', '#52C41A', '#1890FF', '#FAAD14', '#722ED1', '#13
 
 function pickColor(index: number) {
   return PATH_COLORS[index % PATH_COLORS.length];
+}
+
+/** 根据高程映射颜色（绿→黄→红） */
+function elevationToColor(elev: number, minE: number, maxE: number): Color {
+  const range = Math.max(maxE - minE, 1);
+  const t = (elev - minE) / range;
+  if (t < 0.5) {
+    const t2 = t / 0.5;
+    return new Color(t2, 1, 0);
+  } else {
+    const t2 = (t - 0.5) / 0.5;
+    return new Color(1, 1 - t2, 0);
+  }
+}
+
+/** 沿路径在指定累计距离处插值出 Cartesian3 位置 */
+function interpolatePositionsAtDistances(
+  positions: Cartesian3[],
+  targetDistances: number[],
+  segmentDistances: number[],
+  totalDistance: number,
+): Cartesian3[] {
+  const cartos = positions.map((p) => Cartographic.fromCartesian(p));
+  const result: Cartesian3[] = [];
+  let dAccum = 0;
+  let segIdx = 0;
+
+  for (const td of targetDistances) {
+    while (segIdx < segmentDistances.length - 1 && dAccum + segmentDistances[segIdx] < td) {
+      dAccum += segmentDistances[segIdx];
+      segIdx++;
+    }
+    const segD = segmentDistances[segIdx] || 1;
+    const frac = Math.max(0, Math.min(1, (td - dAccum) / segD));
+    const geodesic = new EllipsoidGeodesic(cartos[segIdx], cartos[segIdx + 1]);
+    const interp = geodesic.interpolateUsingFraction(frac);
+    result.push(Cartesian3.fromRadians(interp.longitude, interp.latitude, interp.height));
+  }
+  return result;
 }
 
 /** 路径名称前缀 */
@@ -91,12 +131,19 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   });
 
   /* ==============================
+   *  轨迹播放
+   * ============================== */
+
+  const playback = usePathPlayback({ viewer });
+
+  /* ==============================
    *  路径 CRUD
    * ============================== */
 
   /** 创建新路径并进入绘制模式 */
   function startDraw(type: GeoPathType = 'general') {
     if (isEditing.value) return;
+    if (playback.isPlaying.value) playback.stopPlayback();
     const count = paths.value.length + 1;
     const path: GeoPath = {
       id: genId(),
@@ -162,6 +209,11 @@ export const useGeoPathStore = defineStore('geoPath', () => {
       profileLoading.value = true;
       const profile = await samplePathProfile(v.terrainProvider, path.positions);
       path.elevationProfile = profile;
+      // 重建 entity 以使用新剖面数据着色
+      if (profile && !isEditing.value) {
+        removePathEntities(path.id);
+        createPathEntity(path);
+      }
     } catch (err) {
       console.error('高程采样失败:', err);
     } finally {
@@ -192,14 +244,14 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     activePathId.value = id;
   }
 
-  /** 删除路径（编辑中先退出编辑） */
+  /** 删除路径（编辑中先退出编辑；播放中先停止） */
   function removePath(id: string) {
+    if (playback.isPlaying.value) playback.stopPlayback();
     if (isEditing.value && activePathId.value === id) {
       editing.stopEdit();
       isEditing.value = false;
     }
-    const path = paths.value.find((p) => p.id === id);
-    if (path) removePathEntity(path);
+    removePathEntities(id);
 
     paths.value = paths.value.filter((p) => p.id !== id);
     expandedIds.value = expandedIds.value.filter((eid) => eid !== id);
@@ -210,13 +262,14 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     }
   }
 
-  /** 清除所有路径（编辑中先退出编辑） */
+  /** 清除所有路径（编辑中先退出编辑；播放中先停止） */
   function clearAll() {
+    if (playback.isPlaying.value) playback.stopPlayback();
     if (isEditing.value) {
       editing.stopEdit();
       isEditing.value = false;
     }
-    paths.value.forEach((p) => removePathEntity(p));
+    paths.value.forEach((p) => removePathEntities(p.id));
     paths.value = [];
     expandedIds.value = [];
     activePathId.value = null;
@@ -228,17 +281,13 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     const path = paths.value.find((p) => p.id === id);
     if (!path) return;
     path.show = !path.show;
-    // 同步 Cesium entity 显隐
     const v = toRaw(viewer.value);
     if (!isValidViewer(v)) return;
-    const entities = v.entities.values;
-    for (let i = 0; i < entities.length; i++) {
-      const e = entities[i];
-      if (e.id === `geoPath_${id}`) {
-        e.show = path.show;
-        break;
-      }
-    }
+    const ids = findPathEntityIds(id);
+    ids.forEach((eid) => {
+      const e = v.entities.getById(eid);
+      if (e) e.show = path.show;
+    });
   }
 
   /** 更新路径属性 */
@@ -270,6 +319,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   function startEdit(pathId?: string) {
     const id = pathId ?? activePathId.value;
     if (!id || isDrawing.value) return;
+    if (playback.isPlaying.value) playback.stopPlayback();
     const p = paths.value.find((p) => p.id === id);
     if (!p || p.positions.length < 2) return;
 
@@ -289,14 +339,8 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     const path = activePath.value;
     if (!path) return;
 
-    // 原地更新已有 entity 的 positions，避免 remove+add 的时序问题
-    const v = toRaw(viewer.value);
-    if (isValidViewer(v)) {
-      const entity = v.entities.getById(`geoPath_${path.id}`);
-      if (entity) {
-        (entity.polyline as any).positions = [...path.positions];
-      }
-    }
+    removePathEntities(path.id);
+    createPathEntity(path); // 重建（无剖面时单色）
     path.elevationProfile = null; // 标记为过期
   }
 
@@ -320,27 +364,81 @@ export const useGeoPathStore = defineStore('geoPath', () => {
    *  Cesium 实体管理
    * ============================== */
 
+  function findPathEntityIds(id: string): string[] {
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return [];
+    const prefix = `geoPath_${id}`;
+    const ids: string[] = [];
+    v.entities.values.forEach((e: any) => {
+      if (e.id && (e.id as string).startsWith(prefix)) ids.push(e.id as string);
+    });
+    return ids;
+  }
+
+  function removePathEntities(id: string) {
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    const ids = findPathEntityIds(id);
+    ids.forEach((eid) => {
+      const e = v.entities.getById(eid);
+      if (e) v.entities.remove(e);
+    });
+  }
+
   function createPathEntity(path: GeoPath) {
     const v = toRaw(viewer.value);
     if (!isValidViewer(v)) return;
 
-    const color = Color.fromCssColorString(path.color);
-    v.entities.add({
-      id: `geoPath_${path.id}`,
-      polyline: {
-        positions: path.positions,
-        width: 3,
-        material: color,
-        clampToGround: true,
-      },
-    });
-  }
+    // 如果没有高程剖面，使用单色 polyline（兼容旧数据）
+    if (!path.elevationProfile || path.elevationProfile.elevations.length < 2) {
+      v.entities.add({
+        id: `geoPath_${path.id}_main`,
+        polyline: {
+          positions: path.positions,
+          width: 3,
+          material: Color.fromCssColorString(path.color),
+          clampToGround: true,
+        },
+      });
+      return;
+    }
 
-  function removePathEntity(path: GeoPath) {
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return;
-    const entity = v.entities.getById(`geoPath_${path.id}`);
-    if (entity) v.entities.remove(entity);
+    // 有高程剖面：分段着色
+    const { distances, elevations } = path.elevationProfile;
+    const { minElevation, maxElevation } = path.elevationProfile;
+    const totalDist = distances[distances.length - 1] || 1;
+
+    // 计算原始路径的每段距离
+    const cartos = path.positions.map((p) => Cartographic.fromCartesian(p));
+    const segDists: number[] = [];
+    for (let i = 0; i < cartos.length - 1; i++) {
+      segDists.push(new EllipsoidGeodesic(cartos[i], cartos[i + 1]).surfaceDistance);
+    }
+    const pathTotal = segDists.reduce((a, b) => a + b, 0);
+
+    // 为每个剖面采样点插值出地图位置
+    const profilePositions = interpolatePositionsAtDistances(path.positions, distances, segDists, pathTotal);
+
+    // 批量合并每 5 个采样点为一段，减少 entity 数量
+    const batchSize = 5;
+    const lineWidth = 5;
+    for (let i = 0; i < profilePositions.length - 1 && i < elevations.length - 1; i += batchSize) {
+      const end = Math.min(i + batchSize + 1, profilePositions.length);
+      const batchPos = profilePositions.slice(i, end);
+      const avgElev = elevations.slice(i, Math.min(i + batchSize, elevations.length - 1) + 1)
+        .reduce((a, b) => a + b, 0) / (end - i);
+      const segColor = elevationToColor(avgElev, minElevation, maxElevation);
+
+      v.entities.add({
+        id: `geoPath_${path.id}_seg_${Math.floor(i / batchSize)}`,
+        polyline: {
+          positions: batchPos,
+          width: lineWidth,
+          material: segColor,
+          clampToGround: true,
+        },
+      });
+    }
   }
 
   /* ==============================
@@ -460,6 +558,22 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     // export
     downloadGeoJson,
     importFromGeoJson,
+    // playback
+    playbackIsPlaying: playback.isPlaying,
+    playbackIsPaused: playback.isPaused,
+    playbackSpeed: playback.speed,
+    playbackFollowCamera: playback.followCamera,
+    playbackProgress: playback.progress,
+    playbackDistance: playback.currentDistance,
+    playbackDuration: playback.currentDuration,
+    playbackEstimatedDuration: playback.estimatedDuration,
+    startPlayback: playback.startPlayback,
+    pausePlayback: playback.pausePlayback,
+    resumePlayback: playback.resumePlayback,
+    stopPlayback: playback.stopPlayback,
+    setPlaybackSpeed: playback.setSpeed,
+    seekPlayback: playback.seekTo,
+    togglePlaybackFollowCamera: playback.toggleFollowCamera,
   };
 });
 

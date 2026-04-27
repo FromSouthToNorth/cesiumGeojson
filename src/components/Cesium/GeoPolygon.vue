@@ -76,13 +76,8 @@
       </div>
 
       <div class="paths-scroll">
-        <div
-          v-for="poly in store.polygons"
-          :key="poly.id"
-          class="path-card"
-          :class="{ active: poly.id === store.activePolygonId }"
-          @click="store.selectPolygon(poly.id)"
-        >
+        <div v-for="poly in store.polygons" :key="poly.id" class="path-card"
+          :class="{ active: poly.id === store.activePolygonId }" @click="store.selectPolygon(poly.id)">
           <div class="path-header">
             <div class="path-info">
               <span class="color-dot" :style="{ backgroundColor: poly.color }"></span>
@@ -162,6 +157,96 @@
               </div>
             </div>
 
+            <!-- ── 坡度分析 ── -->
+            <div class="detail-section">
+              <div class="detail-title">空间坡度分析</div>
+
+              <template v-if="!store.slopeResult && !store.slopeLoading">
+                <Button size="small" @click.stop="store.analyzeSlope(poly.id)">
+                  开始坡度分析
+                </Button>
+                <p class="hint">在选区内生成网格采样点，分析坡度分布</p>
+              </template>
+
+              <template v-if="store.slopeLoading">
+                <div class="loading-hint">正在采样地形并计算坡度...</div>
+              </template>
+
+              <template v-if="store.slopeResult && !store.slopeLoading">
+                <div class="slope-grid">
+                  <div class="slope-stat">
+                    <span class="stat-label">平均坡度</span>
+                    <span class="stat-value">{{ store.slopeResult.avgSlope.toFixed(1) }}%</span>
+                    <span class="stat-angle">{{ store.slopeResult.avgAngle.toFixed(1) }}°</span>
+                  </div>
+                  <div class="slope-stat">
+                    <span class="stat-label">最小坡度</span>
+                    <span class="stat-value">{{ store.slopeResult.minSlope.toFixed(1) }}%</span>
+                    <span class="stat-angle">{{ store.slopeResult.minAngle.toFixed(1) }}°</span>
+                  </div>
+                  <div class="slope-stat">
+                    <span class="stat-label">最大坡度</span>
+                    <span class="stat-value">{{ store.slopeResult.maxSlope.toFixed(1) }}%</span>
+                    <span class="stat-angle">{{ store.slopeResult.maxAngle.toFixed(1) }}°</span>
+                  </div>
+                  <div class="slope-stat">
+                    <span class="stat-label">中位数</span>
+                    <span class="stat-value">{{ store.slopeResult.medianSlope.toFixed(1) }}%</span>
+                  </div>
+                  <div class="slope-stat">
+                    <span class="stat-label">标准差</span>
+                    <span class="stat-value">{{ store.slopeResult.stdDevSlope.toFixed(2) }}</span>
+                  </div>
+                  <div class="slope-stat">
+                    <span class="stat-label">采样点</span>
+                    <span class="stat-value">{{ store.slopeResult.sampleCount }}</span>
+                  </div>
+                </div>
+
+                <!-- 坡度分布条 -->
+                <div class="slope-dist-section">
+                  <div class="slope-dist-bar">
+                    <div class="slope-bar-seg gentle" :style="{ width: store.slopeResult.gentlePct + '%' }"
+                      :title="'平缓 ' + store.slopeResult.gentlePct.toFixed(0) + '%'"></div>
+                    <div class="slope-bar-seg moderate" :style="{ width: store.slopeResult.moderatePct + '%' }"
+                      :title="'中等 ' + store.slopeResult.moderatePct.toFixed(0) + '%'"></div>
+                    <div class="slope-bar-seg steep" :style="{ width: store.slopeResult.steepPct + '%' }"
+                      :title="'陡峭 ' + store.slopeResult.steepPct.toFixed(0) + '%'"></div>
+                  </div>
+                  <div class="slope-dist-labels">
+                    <span><span class="dot gentle"></span>平缓 {{ store.slopeResult.gentlePct.toFixed(0) }}%</span>
+                    <span><span class="dot moderate"></span>中等 {{ store.slopeResult.moderatePct.toFixed(0) }}%</span>
+                    <span><span class="dot steep"></span>陡峭 {{ store.slopeResult.steepPct.toFixed(0) }}%</span>
+                  </div>
+                </div>
+
+                <div class="slope-supplement">
+                  <span>高程起伏 {{ store.slopeResult.elevationRange.toFixed(0) }} m</span>
+                  <span>网格间距 {{ store.slopeResult.gridSpacing }} m</span>
+                  <span style="font-size: 11px; color: var(--surface-text-muted);">分级: &lt;5°平缓 / 5-15°中等 /
+                    ≥15°陡峭</span>
+                </div>
+
+                <!-- 图例 + 显隐切换 -->
+                <div class="slope-legend">
+                  <div class="legend-items">
+                    <span class="legend-item"><span class="legend-dot gentle"></span>平缓</span>
+                    <span class="legend-item"><span class="legend-dot moderate"></span>中等</span>
+                    <span class="legend-item"><span class="legend-dot steep"></span>陡峭</span>
+                  </div>
+                  <Button size="small" @click.stop="store.toggleSlopeGrid()">
+                    <template v-if="store.showSlopeGrid">隐藏网格</template>
+                    <template v-else>显示网格</template>
+                  </Button>
+                </div>
+
+                <Button size="small" @click.stop="store.analyzeSlope(poly.id)">
+                  <ReloadOutlined />
+                  重新分析
+                </Button>
+              </template>
+            </div>
+
             <!-- 工具按钮 -->
             <div class="detail-tools">
               <Tooltip :title="store.showLabels ? '隐藏标注' : '显示标注'">
@@ -213,6 +298,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   CheckOutlined,
+  ReloadOutlined,
   TagsOutlined,
   TagsFilled,
 } from '@ant-design/icons-vue';
@@ -583,6 +669,154 @@ onUnmounted(() => {
   margin-top: 4px;
   color: var(--warning-color, #faad14);
   font-size: 11px;
+}
+
+/* ── 坡度分析 ── */
+
+.slope-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.slope-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 2px;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+}
+
+.slope-stat .stat-label {
+  color: var(--surface-text-muted);
+  font-size: 11px;
+}
+
+.slope-stat .stat-value {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.slope-stat .stat-angle {
+  color: var(--surface-text-muted);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.slope-dist-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slope-dist-bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-bg-secondary, var(--surface-bg));
+}
+
+.slope-bar-seg {
+  transition: width 0.3s;
+}
+
+.slope-bar-seg.gentle {
+  background: #52C41A;
+}
+
+.slope-bar-seg.moderate {
+  background: #FAAD14;
+}
+
+.slope-bar-seg.steep {
+  background: #FF4D4F;
+}
+
+.slope-dist-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--surface-text-muted);
+  font-size: 11px;
+}
+
+.slope-dist-labels .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.slope-dist-labels .dot.gentle {
+  background: #52C41A;
+}
+
+.slope-dist-labels .dot.moderate {
+  background: #FAAD14;
+}
+
+.slope-dist-labels .dot.steep {
+  background: #FF4D4F;
+}
+
+.slope-supplement {
+  display: flex;
+  justify-content: space-between;
+  color: var(--surface-text-muted);
+  font-size: 11px;
+}
+
+.loading-hint {
+  padding: 8px;
+  color: var(--surface-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ── 坡度图例 ── */
+
+.slope-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.legend-items {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--surface-text-muted);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.legend-dot.gentle {
+  background: #52C41A;
+}
+
+.legend-dot.moderate {
+  background: #FAAD14;
+}
+
+.legend-dot.steep {
+  background: #FF4D4F;
 }
 
 /* ── 汇总统计 ── */
