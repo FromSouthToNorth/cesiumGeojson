@@ -107,9 +107,6 @@ export function useClipEditing(options: {
 
     // 通知 store 记录初始状态快照
     onStart?.();
-
-    // 锁定相机：编辑期间禁用相机拖拽，避免与顶点拖拽冲突
-    v.scene.screenSpaceCameraController.enableInputs = false;
     isEditing.value = true;
 
     drawEditGraphics();
@@ -298,15 +295,16 @@ export function useClipEditing(options: {
       const v2 = getViewer();
       if (!v2) return;
 
-      // 更新光标反馈
-      updateCursor(v2, movement.endPosition);
-
-      // 拖拽中：更新顶点位置
-      if (!dragState) return;
-      const cartesian = pickGlobe(v2, movement.endPosition);
-      if (cartesian) {
-        positions.value[dragState.index] = cartesian;
-        updateEditVertex(dragState.index, cartesian);
+      if (dragState) {
+        v2.scene.screenSpaceCameraController.enableInputs = false;
+        const cartesian = pickGlobe(v2, movement.endPosition);
+        if (cartesian) {
+          positions.value[dragState.index] = cartesian;
+          updateEditVertex(dragState.index, cartesian);
+        }
+      } else {
+        v2.scene.screenSpaceCameraController.enableInputs = true;
+        updateCursor(v2, movement.endPosition);
       }
     }, ScreenSpaceEventType.MOUSE_MOVE);
 

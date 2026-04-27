@@ -93,7 +93,6 @@ export function usePolygonEditing(options: {
     if (!v) return;
 
     onStart?.();
-    v.scene.screenSpaceCameraController.enableInputs = false;
     isEditing.value = true;
 
     drawEditGraphics();
@@ -254,13 +253,16 @@ export function usePolygonEditing(options: {
       const v2 = getViewer();
       if (!v2) return;
 
-      updateCursor(v2, movement.endPosition);
-
-      if (!dragState) return;
-      const cartesian = pickGlobe(v2, movement.endPosition);
-      if (cartesian) {
-        positions.value[dragState.index] = cartesian;
-        updateEditVertex(dragState.index, cartesian);
+      if (dragState) {
+        v2.scene.screenSpaceCameraController.enableInputs = false;
+        const cartesian = pickGlobe(v2, movement.endPosition);
+        if (cartesian) {
+          positions.value[dragState.index] = cartesian;
+          updateEditVertex(dragState.index, cartesian);
+        }
+      } else {
+        v2.scene.screenSpaceCameraController.enableInputs = true;
+        updateCursor(v2, movement.endPosition);
       }
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
