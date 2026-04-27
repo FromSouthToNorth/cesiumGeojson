@@ -23,6 +23,8 @@ export interface GeoPolygon {
   measurements: GeoPolygonMeasureResult;
   /** 各顶点的地形高程（海拔，米），采样后填充 */
   vertexElevations?: number[];
+  /** 是否启用地形裁切 */
+  clipping?: boolean;
   createdAt: number;
 }
 
@@ -97,6 +99,7 @@ export interface GeoPolygonJSON {
       color: string;
       area: number;
       perimeter: number;
+      clipping?: boolean;
       createdAt: number;
     };
   }[];

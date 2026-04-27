@@ -249,6 +249,20 @@
 
             <!-- 工具按钮 -->
             <div class="detail-tools">
+              <Tooltip title="裁切模式下显示多边形外部">
+                <Button size="small" :type="store.clippingInverse ? 'primary' : 'default'"
+                  :disabled="!poly.clipping" :danger="store.clippingInverse"
+                  @click.stop="store.toggleClippingInverse()">
+                  {{ store.clippingInverse ? '反选中' : '反选' }}
+                </Button>
+              </Tooltip>
+              <Tooltip title="以该多边形形状裁切地形">
+                <Button size="small" :type="poly.clipping ? 'primary' : 'default'" :danger="poly.clipping"
+                  @click.stop="store.toggleClipping(poly.id)">
+                  <template v-if="poly.clipping">裁切中</template>
+                  <template v-else>地形裁切</template>
+                </Button>
+              </Tooltip>
               <Tooltip :title="store.showLabels ? '隐藏标注' : '显示标注'">
                 <Button size="small" @click.stop="store.toggleLabels()">
                   <TagsOutlined v-if="store.showLabels" />

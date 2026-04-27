@@ -309,6 +309,11 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     },
   );
 
+  /** 切换反选模式 */
+  function toggleInverse() {
+    inverse.value = !inverse.value;
+  }
+
   // inverse 变更时同步监听
   watch(inverse, () => {
     if (hasRegions.value) {
@@ -326,6 +331,7 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
     // state
     enabled,
     inverse,
+    toggleInverse,
     isDrawing: drawing.isDrawing,
     isEditing: editing.isEditing,
     regions,

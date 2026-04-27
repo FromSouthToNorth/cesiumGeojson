@@ -5,11 +5,15 @@
 <template>
   <SidePanel :visible="visible" title="地形裁切" @update:visible="emit('update:visible', $event)">
     <Space direction="vertical" style="width: 100%">
-      <!-- Inverse 反选开关 -->
-      <div>
-        <span>Inverse（反选）</span>
-        <Switch v-model:checked="store.inverse" style="margin-left: 8px" />
-      </div>
+      <!-- 反选按钮 -->
+      <Button
+        block
+        :type="store.inverse ? 'primary' : 'default'"
+        :danger="store.inverse"
+        @click="store.toggleInverse()"
+      >
+        {{ store.inverse ? '反选模式：显示区域外部' : '反选：裁切区域内部' }}
+      </Button>
 
       <!-- ── 空闲状态：无区域 ── -->
       <Button
@@ -79,7 +83,7 @@
 
 <script setup lang="ts">
 import { useTerrainClipStore } from '@/stores/terrainClipStore';
-import { Button, Space, Switch, Popconfirm } from 'ant-design-vue';
+import { Button, Space, Popconfirm } from 'ant-design-vue';
 import SidePanel from './SidePanel.vue';
 
 defineOptions({ name: 'TerrainClip' });

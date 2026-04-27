@@ -10,6 +10,8 @@ import {
   Cartesian2,
   Cartesian3,
   Cartographic,
+  ClippingPolygon,
+  ClippingPolygonCollection,
   Color,
   HorizontalOrigin,
   VerticalOrigin,
@@ -89,6 +91,9 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   const slopeResult = ref<SlopeAnalysisResult | null>(null);
   const showSlopeGrid = ref(false);
 
+  /** 裁切反选 */
+  const clippingInverse = ref(false);
+
   /* ==============================
    *  绘制 composable
    * ============================== */
@@ -150,6 +155,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       positions: [],
       measurements: { segments: [], perimeter: 0, area: 0 },
       createdAt: Date.now(),
+      clipping: false,
     };
 
     polygons.value.push(polygon);
@@ -220,6 +226,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     if (polygon) removePolygonEntity(polygon);
     removeSlopeGridEntities(id);
     polygons.value = polygons.value.filter((p) => p.id !== id);
+    syncPolygonClipping();
 
     if (activePolygonId.value === id) {
       const prev = polygons.value[polygons.value.length - 1] ?? null;
@@ -237,6 +244,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     polygons.value = [];
     activePolygonId.value = null;
     positions.value = [];
+    syncPolygonClipping();
   }
 
   /** 切换多边形显隐 */
@@ -273,6 +281,51 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
 
     const sphere = BoundingSphere.fromPoints(polygon.positions);
     v.camera.flyToBoundingSphere(sphere);
+  }
+
+  /* ==============================
+   *  地形裁切
+   * ============================== */
+
+  /** 切换多边形裁切开关 */
+  function toggleClipping(id: string) {
+    const poly = polygons.value.find((p) => p.id === id);
+    if (!poly || poly.positions.length < 3) {
+      message.warning('多边形至少需要 3 个顶点才能裁切');
+      return;
+    }
+    poly.clipping = !poly.clipping;
+    syncPolygonClipping();
+    message.success(poly.clipping ? `"${poly.name}" 已启用裁切` : `"${poly.name}" 已关闭裁切`);
+  }
+
+  /** 将所有开启了裁切的多边形同步到 globe */
+  function syncPolygonClipping() {
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+
+    const clippingPolys = polygons.value.filter(
+      (p) => p.clipping && p.positions.length >= 3,
+    );
+
+    if (clippingPolys.length === 0) {
+      v.scene.globe.clippingPolygons = new ClippingPolygonCollection();
+      v.scene.globe.depthTestAgainstTerrain = false;
+      return;
+    }
+
+    v.scene.globe.depthTestAgainstTerrain = true;
+    const polyGeometries = clippingPolys.map((p) => new ClippingPolygon({ positions: p.positions }));
+    v.scene.globe.clippingPolygons = new ClippingPolygonCollection({
+      polygons: polyGeometries,
+      inverse: clippingInverse.value,
+    });
+  }
+
+  /** 切换裁切反选 */
+  function toggleClippingInverse() {
+    clippingInverse.value = !clippingInverse.value;
+    syncPolygonClipping();
   }
 
   /* ==============================
@@ -502,6 +555,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
             color: p.color,
             area: p.measurements.area,
             perimeter: p.measurements.perimeter,
+            clipping: p.clipping ?? false,
             createdAt: p.createdAt,
           },
         };
@@ -583,6 +637,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
         positions: polyPositions,
         measurements: calcPolygonMeasure(polyPositions),
         createdAt: Date.now(),
+        clipping: feature.properties?.clipping ?? false,
       };
 
       polygons.value.push(polygon);
@@ -623,6 +678,10 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     redo,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
+    // clipping
+    toggleClipping,
+    clippingInverse,
+    toggleClippingInverse,
     // slope analysis
     slopeLoading,
     slopeResult,
