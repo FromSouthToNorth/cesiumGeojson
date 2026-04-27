@@ -365,9 +365,16 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       } else {
         message.warning('坡度分析失败，采样点不足');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('坡度分析出错:', err);
-      message.error('坡度分析失败');
+      const msg = err?.message ?? '';
+      if (msg.startsWith('AREA_TOO_SMALL:')) {
+        message.warning(msg.replace('AREA_TOO_SMALL:', ''));
+      } else if (msg.startsWith('AREA_TOO_LARGE:')) {
+        message.warning(msg.replace('AREA_TOO_LARGE:', ''));
+      } else {
+        message.error('坡度分析失败');
+      }
     } finally {
       slopeLoading.value = false;
     }

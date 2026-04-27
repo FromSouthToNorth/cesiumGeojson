@@ -13,7 +13,7 @@ function pointInPolygon(lon: number, lat: number, verts: { lon: number; lat: num
   for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
     const pi = verts[i], pj = verts[j];
     if ((pi.lat > lat) !== (pj.lat > lat) &&
-        lon < ((pj.lon - pi.lon) * (lat - pi.lat) / (pj.lat - pi.lat) + pi.lon)) {
+      lon < ((pj.lon - pi.lon) * (lat - pi.lat) / (pj.lat - pi.lat) + pi.lon)) {
       inside = !inside;
     }
   }
@@ -59,6 +59,20 @@ export async function analyzePolygonSlope(
 
   const { maxPoints = 20000, terrainLevel = 13 } = options;
 
+  // 面积安全校验
+  const polyArea = sphericalArea(positions);
+  const MIN_AREA = 100; // 100 m²
+  const MAX_AREA = 10_000_000_000; // 10000 m²
+  if (polyArea < MIN_AREA) {
+    throw new Error(`AREA_TOO_SMALL:多边形面积过小（${polyArea.toFixed(0)} m²），至少需要 ${MIN_AREA} m²`);
+  }
+  if (polyArea > MAX_AREA) {
+    throw new Error(
+      `AREA_TOO_LARGE:多边形面积 ${(polyArea / 1_000_000).toFixed(1)} km² 超出建议范围（≤${MAX_AREA / 1_000_000} km²），` +
+      '过大的区域可能导致浏览器卡顿或分析失败，建议拆分为更小的区域'
+    );
+  }
+
   // 1. 包围盒
   let minLon = Infinity, maxLon = -Infinity;
   let minLat = Infinity, maxLat = -Infinity;
@@ -80,7 +94,6 @@ export async function analyzePolygonSlope(
   const widthM = lonRange * radToDeg * mPerDegLon;
   const heightM = latRange * radToDeg * mPerDegLat;
 
-  const polyArea = sphericalArea(positions);
   const bboxArea = widthM * heightM;
   const fillRatio = bboxArea > 0 ? Math.min(1, polyArea / bboxArea) : 0.5;
 
@@ -89,7 +102,7 @@ export async function analyzePolygonSlope(
   let gridSpacing = Math.sqrt(area_ / maxPoints);
   gridSpacing = Math.max(2, Math.round(gridSpacing));
 
-  // 确保至少 2x2 网格
+  // 确保至少 2x2 网格，同时限制网格尺寸防止采样点过多
   const cols = Math.max(2, Math.round(widthM / gridSpacing));
   const rows = Math.max(2, Math.round(heightM / gridSpacing));
   if (cols > 300 || rows > 300) {
@@ -154,10 +167,10 @@ export async function analyzePolygonSlope(
 
       // 需要 3x3 窗口全部有效
       const zNW = grid[r - 1][c - 1], zN = grid[r - 1][c], zNE = grid[r - 1][c + 1];
-      const zW = grid[r][c - 1],                        zE = grid[r][c + 1];
+      const zW = grid[r][c - 1], zE = grid[r][c + 1];
       const zSW = grid[r + 1][c - 1], zS = grid[r + 1][c], zSE = grid[r + 1][c + 1];
       if (zNW == null || zN == null || zNE == null || zW == null || zE == null ||
-          zSW == null || zS == null || zSE == null) continue;
+        zSW == null || zS == null || zSE == null) continue;
 
       // Horn 算法
       const dx = ((zNE + 2 * zE + zSE) - (zNW + 2 * zW + zSW)) / (8 * gridSpacing);
