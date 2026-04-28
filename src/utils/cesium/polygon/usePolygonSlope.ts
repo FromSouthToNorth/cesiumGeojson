@@ -5,7 +5,7 @@
 
 import { Cartographic, Ellipsoid, sampleTerrain } from 'cesium';
 import type { TerrainProvider } from 'cesium';
-import type { SlopeAnalysisResult, SlopeGridPoint } from '@/types/geoPolygon';
+import type { SlopeAnalysisResult, SlopeGridPoint } from '@/types/slopeAnalysis';
 
 /** 射线法判断点是否在多边形内 */
 function pointInPolygon(lon: number, lat: number, verts: { lon: number; lat: number }[]): boolean {

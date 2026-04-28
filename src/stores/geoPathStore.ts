@@ -13,7 +13,7 @@ import { useSnapping } from '@/utils/cesium/shared/useSnapping';
 import type { SnapSource } from '@/utils/cesium/shared/useSnapping';
 import { calcPathDistances } from '@/utils/cesium/path/usePathMeasure';
 import { samplePathProfile } from '@/utils/cesium/path/usePathProfile';
-import { isValidViewer, genId } from '@/utils/cesium/shared/common';
+import { isValidViewer, genId, toDeg } from '@/utils/cesium/shared/common';
 import { useClipHistory } from '@/utils/cesium/terrain-clip/useClipHistory';
 import { usePathEditing } from '@/utils/cesium/path/usePathEditing';
 import { usePathPlayback } from '@/utils/cesium/path/usePathPlayback';
@@ -205,7 +205,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
 
   /** 创建新路径并进入绘制模式 */
   function startDraw(type: GeoPathType = 'general') {
-    if (isEditing.value) return;
+    if (isEditing.value || isMoving.value) return;
     if (playback.isPlaying.value) playback.stopPlayback();
     const count = paths.value.length + 1;
     const path: GeoPath = {
@@ -391,7 +391,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   /** 进入编辑模式 */
   function startEdit(pathId?: string) {
     const id = pathId ?? activePathId.value;
-    if (!id || isDrawing.value) return;
+    if (!id || isDrawing.value || isMoving.value) return;
     if (playback.isPlaying.value) playback.stopPlayback();
     const p = paths.value.find((p) => p.id === id);
     if (!p || p.positions.length < 2) return;
@@ -417,20 +417,75 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     path.elevationProfile = null; // 标记为过期
   }
 
-  /** 撤销 */
+  /** 撤销（编辑/移动后均重建实体） */
   function undo() {
     if (!history.undo()) return;
     const path = activePath.value;
-    if (path) path.measurements = calcPathDistances(path.positions);
+    if (path) {
+      path.measurements = calcPathDistances(path.positions);
+      if (!isEditing.value) {
+        removePathEntities(path.id);
+        createPathEntity(path);
+      }
+    }
     if (editing.isEditing.value) editing.redraw();
   }
 
-  /** 重做 */
+  /** 重做（编辑/移动后均重建实体） */
   function redo() {
     if (!history.redo()) return;
     const path = activePath.value;
-    if (path) path.measurements = calcPathDistances(path.positions);
+    if (path) {
+      path.measurements = calcPathDistances(path.positions);
+      if (!isEditing.value) {
+        removePathEntities(path.id);
+        createPathEntity(path);
+      }
+    }
     if (editing.isEditing.value) editing.redraw();
+  }
+
+  /* ==============================
+   *  移动（平移整个路径）
+   * ============================== */
+
+  const isMoving = ref(false);
+
+  function startMove(id: string) {
+    if (isEditing.value || isDrawing.value) return;
+    const path = paths.value.find((p) => p.id === id);
+    if (!path || path.positions.length < 2) return;
+    if (playback.isPlaying.value) playback.stopPlayback();
+    activePathId.value = id;
+    history.reset(); // 清空编辑历史，移动后撤回只回退移动操作
+    positions.value = path.positions;
+    isMoving.value = true;
+  }
+
+  function cancelMove() {
+    isMoving.value = false;
+  }
+
+  /** 应用移动后的新顶点位置（支持撤销/重做） */
+  function applyMovePositions(id: string, newPositions: Cartesian3[]) {
+    const path = paths.value.find((p) => p.id === id);
+    if (!path) return;
+
+    positions.value = path.positions;
+    history.pushHistory(); // 快照移动前状态
+
+    path.positions = newPositions;
+    positions.value = newPositions;
+    path.measurements = calcPathDistances(newPositions);
+    path.elevationProfile = null;
+
+    // 重建 Cesium entity
+    removePathEntities(id);
+    createPathEntity(path);
+
+    history.pushHistory(); // 快照移动后状态（支持重做）
+
+    isMoving.value = false;
   }
 
   /* ==============================
@@ -627,6 +682,11 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     redo,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
+    // moving
+    isMoving,
+    startMove,
+    cancelMove,
+    applyMovePositions,
     // profile
     resampleProfile,
     // export
@@ -650,7 +710,3 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     togglePlaybackFollowCamera: playback.toggleFollowCamera,
   };
 });
-
-function toDeg(rad: number) {
-  return (rad * 180) / Math.PI;
-}

@@ -22,10 +22,11 @@ import { useCesiumStore } from './cesiumStore';
 import { usePolygonDrawing, calcPolygonMeasure } from '@/utils/cesium/polygon/usePolygonDrawing';
 import { useSnapping } from '@/utils/cesium/shared/useSnapping';
 import type { SnapSource } from '@/utils/cesium/shared/useSnapping';
-import { isValidViewer, genId } from '@/utils/cesium/shared/common';
+import { isValidViewer, genId, toDeg, formatArea, formatDist } from '@/utils/cesium/shared/common';
 import { useClipHistory } from '@/utils/cesium/terrain-clip/useClipHistory';
 import { usePolygonEditing } from '@/utils/cesium/polygon/usePolygonEditing';
-import type { GeoPolygon, GeoPolygonJSON, SlopeAnalysisResult } from '@/types/geoPolygon';
+import type { GeoPolygon, GeoPolygonJSON } from '@/types/geoPolygon';
+import type { SlopeAnalysisResult } from '@/types/slopeAnalysis';
 import { analyzePolygonSlope } from '@/utils/cesium/polygon/usePolygonSlope';
 import { useGeoPathStore } from './geoPathStore';
 
@@ -48,7 +49,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
 
   const polygons = ref<GeoPolygon[]>([]);
   const activePolygonId = ref<string | null>(null);
-  const positions = ref<import('cesium').Cartesian3[]>([]);
+  const positions = ref<Cartesian3[]>([]);
   const isDrawing = ref(false);
   const isEditing = ref(false);
   const snappingEnabled = ref(true);
@@ -194,7 +195,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
 
   /** 创建新多边形并进入绘制模式 */
   function startDraw() {
-    if (isEditing.value) return;
+    if (isEditing.value || isMoving.value) return;
     const count = polygons.value.length + 1;
     const polygon: GeoPolygon = {
       id: genId(),
@@ -446,7 +447,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   /** 进入编辑模式 */
   function startEdit(polygonId?: string) {
     const id = polygonId ?? activePolygonId.value;
-    if (!id || isDrawing.value) return;
+    if (!id || isDrawing.value || isMoving.value) return;
     const poly = polygons.value.find((p) => p.id === id);
     if (!poly || poly.positions.length < 3) return;
     clearSlopeAnalysis();
@@ -467,35 +468,74 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     const poly = activePolygon.value;
     if (!poly) return;
 
-    // 原地更新已有 entity 的 hierarchy，避免 remove+add 的时序问题
-    const v = toRaw(viewer.value);
-    if (isValidViewer(v)) {
-      const entity = v.entities.getById(`geoPolygon_${poly.id}`);
-      if (entity) {
-        (entity.polygon as any).hierarchy = [...poly.positions];
-        (entity.position as any) = BoundingSphere.fromPoints(poly.positions).center;
-        if (entity.label) (entity.label as any).text = `${poly.name}\n${formatArea(poly.measurements.area)}`;
-      }
-    }
+    updatePolygonEntity(poly.id, poly.positions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
 
     // 重新采样顶点海拔（编辑后顶点已变）
     sampleVertexElevation(poly);
   }
 
-  /** 撤销 */
+  /** 撤销（编辑/移动后均同步实体） */
   function undo() {
     if (!history.undo()) return;
     const poly = activePolygon.value;
-    if (poly) poly.measurements = calcPolygonMeasure(poly.positions);
+    if (poly) {
+      poly.measurements = calcPolygonMeasure(poly.positions);
+      updatePolygonEntity(poly.id, poly.positions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
+    }
     if (editing.isEditing.value) editing.redraw();
   }
 
-  /** 重做 */
+  /** 重做（编辑/移动后均同步实体） */
   function redo() {
     if (!history.redo()) return;
     const poly = activePolygon.value;
-    if (poly) poly.measurements = calcPolygonMeasure(poly.positions);
+    if (poly) {
+      poly.measurements = calcPolygonMeasure(poly.positions);
+      updatePolygonEntity(poly.id, poly.positions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
+    }
     if (editing.isEditing.value) editing.redraw();
+  }
+
+  /* ==============================
+   *  移动（平移整个多边形）
+   * ============================== */
+
+  const isMoving = ref(false);
+
+  function startMove(id: string) {
+    if (isEditing.value || isDrawing.value) return;
+    const poly = polygons.value.find((p) => p.id === id);
+    if (!poly || poly.positions.length < 3) return;
+    clearSlopeAnalysis();
+    activePolygonId.value = id;
+    history.reset(); // 清空编辑历史，移动后撤回只回退移动操作
+    positions.value = poly.positions;
+    isMoving.value = true;
+  }
+
+  function cancelMove() {
+    isMoving.value = false;
+  }
+
+  /** 应用移动后的新顶点位置（支持撤销/重做） */
+  function applyMovePositions(id: string, newPositions: Cartesian3[]) {
+    const poly = polygons.value.find((p) => p.id === id);
+    if (!poly) return;
+
+    positions.value = poly.positions;
+    history.pushHistory(); // 快照移动前状态
+
+    poly.positions = newPositions;
+    positions.value = newPositions;
+    poly.measurements = calcPolygonMeasure(newPositions);
+    poly.vertexElevations = undefined;
+
+    updatePolygonEntity(id, newPositions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
+
+    history.pushHistory(); // 快照移动后状态（支持重做）
+
+    clearSlopeAnalysis();
+    isMoving.value = false;
   }
 
   /* ==============================
@@ -538,6 +578,19 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     if (!isValidViewer(v)) return;
     const entity = v.entities.getById(`geoPolygon_${polygon.id}`);
     if (entity) v.entities.remove(entity);
+  }
+
+  /** 原地更新多边形 Cesium entity 的几何和标签 */
+  function updatePolygonEntity(id: string, newPositions: Cartesian3[], labelText?: string) {
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    const entity = v.entities.getById(`geoPolygon_${id}`);
+    if (!entity) return;
+    (entity.polygon as any).hierarchy = [...newPositions];
+    (entity.position as any) = BoundingSphere.fromPoints(newPositions).center;
+    if (entity.label && labelText) {
+      (entity.label as any).text = labelText;
+    }
   }
 
   /* ==============================
@@ -753,6 +806,11 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     redo,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
+    // moving
+    isMoving,
+    startMove,
+    cancelMove,
+    applyMovePositions,
     // clipping
     toggleClipping,
     clippingInverse,
@@ -773,19 +831,5 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   };
 });
 
-function toDeg(rad: number) {
-  return (rad * 180) / Math.PI;
-}
-
-/** 格式化面积 */
-export function formatArea(area: number): string {
-  if (area >= 1_000_000) return `${(area / 1_000_000).toFixed(2)} km²`;
-  if (area >= 10_000) return `${(area / 10_000).toFixed(2)} ha`;
-  return `${area.toFixed(2)} m²`;
-}
-
-/** 格式化距离 */
-export function formatDist(dist: number): string {
-  if (dist >= 1000) return `${(dist / 1000).toFixed(3)} km`;
-  return `${dist.toFixed(1)} m`;
-}
+// 向后兼容导出（新代码应从 '@/utils/cesium/shared/common' 导入）
+export { formatArea, formatDist };

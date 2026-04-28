@@ -53,3 +53,25 @@ export function pickGlobe(v: Viewer, pos: Cartesian2): Cartesian3 | null {
   const cartesian = ray ? v.scene.globe.pick(ray, v.scene) : undefined;
   return cartesian ?? v.camera.pickEllipsoid(pos, v.scene.globe.ellipsoid) ?? null;
 }
+
+/* ==============================
+ * 通用格式化工具
+ * ============================== */
+
+/** 弧度转角度 */
+export function toDeg(rad: number): number {
+  return (rad * 180) / Math.PI;
+}
+
+/** 格式化面积（自动选择单位：m² / ha / km²） */
+export function formatArea(area: number): string {
+  if (area >= 1_000_000) return `${(area / 1_000_000).toFixed(2)} km²`;
+  if (area >= 10_000) return `${(area / 10_000).toFixed(2)} ha`;
+  return `${area.toFixed(2)} m²`;
+}
+
+/** 格式化距离（自动选择单位：m / km） */
+export function formatDist(dist: number): string {
+  if (dist >= 1000) return `${(dist / 1000).toFixed(3)} km`;
+  return `${dist.toFixed(1)} m`;
+}

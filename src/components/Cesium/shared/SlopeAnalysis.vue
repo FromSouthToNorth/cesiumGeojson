@@ -105,7 +105,7 @@
 <script setup lang="ts">
 import { Button, Spin } from 'ant-design-vue';
 import { ReloadOutlined } from '@ant-design/icons-vue';
-import type { SlopeAnalysisResult } from '@/types/geoPolygon';
+import type { SlopeAnalysisResult } from '@/types/slopeAnalysis';
 
 defineOptions({ name: 'SlopeAnalysis' });
 
