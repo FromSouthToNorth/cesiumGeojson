@@ -164,6 +164,8 @@ export const useGeoPathStore = defineStore('geoPath', () => {
       await finishDraw();
     },
     onCancel: () => {
+      const id = activePathId.value;
+      if (id) removePath(id);
       positions.value = [];
       isDrawing.value = false;
     },
