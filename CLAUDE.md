@@ -39,6 +39,9 @@ src/
 │   │   ├── GeoPath.vue        # Geological path planning & measurement
 │   │   └── GeoPolygon.vue     # Polygon geological survey (area & perimeter, slope, clipping)
 │   └── shared/                # Reusable sub-components
+│       ├── MapPopup.vue       # Left-click popup with SVG leader line
+│       ├── MapContextMenu.vue # Right-click context menu (per entity type)
+│       ├── popupVariants.ts   # 3 visual variants (glass/minimal/card)
 │       ├── ElevationProfile.vue # Path elevation profile chart
 │       ├── VertexTable.vue     # Generic vertex coordinate table
 │       ├── SlopeAnalysis.vue   # Slope analysis (stats, distribution, legend)
@@ -54,14 +57,17 @@ src/
 │   └── appStore.ts            # Global loading state
 ├── types/
 │   ├── geoPath.ts             # GeoPath, ElevationProfile, GeoPathType types
-│   └── geoPolygon.ts          # GeoPolygon, GeoPolygonMeasureResult types
+│   ├── geoPolygon.ts          # GeoPolygon, GeoPolygonMeasureResult, GeoPolygonJSON
+│   └── slopeAnalysis.ts       # SlopeGridPoint, SlopeAnalysisResult (split from geoPolygon.ts)
 ├── utils/
 │   ├── cesium/
 │   │   ├── viewer.ts          # Viewer factory (Ion token, terrain, loading state)
 │   │   ├── shared/
-│   │   │   ├── common.ts      # Shared types & helpers (terrain clip, drawing, etc.)
+│   │   │   ├── common.ts      # Shared types & helpers (toDeg, formatArea, formatDist, etc.)
 │   │   │   ├── useKeyboardShortcuts.ts # Declarative keyboard shortcuts (cross-platform Ctrl/Cmd)
-│   │   │   └── useSnapping.ts # Drawing vertex snapping (world + screen distance filter, shift disable)
+│   │   │   ├── useSnapping.ts # Drawing vertex snapping (world + screen distance filter, shift disable)
+│   │   │   ├── useMapInteraction.ts # Global map interaction (left-click popup, right-click menu)
+│   │   │   └── useEntityMove.ts     # Entity move with ghost preview, highlight, undo support
 │   │   ├── terrain-clip/
 │   │   │   ├── useClipDrawing.ts   # Terrain clip polygon drawing mode
 │   │   │   ├── useClipEditing.ts   # Terrain clip vertex editing mode
@@ -189,9 +195,10 @@ geoPathStore (coordinator: multi-path CRUD, drawing, editing, Cesium entity mana
 
 Key details:
 - **Shared-ref pattern**: `positions` ref in store = `path.positions` (same array reference). During drawing, mutations to `positions` propagate directly to the path.
-- **startDraw(type)**: Creates a new `GeoPath` with auto-color, pushes to `paths`, links `positions`, then delegates to `usePathDrawing.startDraw()`.
+- **startDraw(type)**: Creates a new `GeoPath` with auto-color, pushes to `paths`, links `positions`, then delegates to `usePathDrawing.startDraw()`. Guards against `isMoving`.
 - **finishDraw()**: Async — calculates distances via `calcPathDistances`, creates Cesium polyline entity, samples terrain profile via `samplePathProfile`. After editing, elevation profile is cleared (`null`) and can be re-sampled via `resampleProfile()`.
-- **Editing**: Enter/Escape to exit edit mode, Delete/Backspace to remove vertex (min 2 vertices), Ctrl+Z/Y for undo/redo. Camera locks during editing.
+- **Editing**: Enter/Escape to exit edit mode, Delete/Backspace to remove vertex (min 2 vertices), Ctrl+Z/Y for undo/redo. Camera locks during editing. Guards against `isMoving`.
+- **Move**: Context menu → `startMove(id)` resets history, `applyMovePositions(id, newPositions)` saves pre/post-move snapshots via `history.pushHistory()`. On undo/redo, entity is rebuilt via `removePathEntities` + `createPathEntity`. Ghost preview managed by `useEntityMove`.
 - **Elevation profile**: Samples terrain at 10m intervals along the path, computes min/max/avg/climb/descent/gradient, rendered as inline SVG chart. Re-sample button shown when profile is stale.
 - **GeoJSON import/export**: Cartesian3 → [lng, lat, height] conversion, FeatureCollection blob download. Import supports `.geojson` / `.json` files via file picker.
 - **Path colors**: 8-color cycle (`#FF4D4F`, `#52C41A`, `#1890FF`, `#FAAD14`, `#722ED1`, `#13C2C2`, `#EB2F96`, `#FA541C`). Drawing preview color matches assigned path color.
@@ -215,9 +222,10 @@ geoPolygonStore (coordinator: multi-polygon CRUD, drawing, editing, entity manag
 
 Key details:
 - **Shared-ref pattern**: `positions` ref in store = `polygon.positions` (same array reference).
-- **startDraw()**: Creates a new `GeoPolygon` with auto-color, pushes to `polygons`, links `positions`, then delegates to `usePolygonDrawing.startDraw()`.
+- **startDraw()**: Creates a new `GeoPolygon` with auto-color, pushes to `polygons`, links `positions`, then delegates to `usePolygonDrawing.startDraw()`. Guards against `isEditing` and `isMoving`.
 - **finishDraw()**: Saves measurement result, creates Cesium polygon entity (semi-transparent fill + outline + map label). Samples terrain elevation at each vertex via `sampleVertexElevation()`.
-- **Editing**: Enter/Escape to exit edit mode, Delete/Backspace to remove vertex (min 3 vertices), Ctrl+Z/Y for undo/redo. Camera locks during editing. Vertex elevations are cleared during edits and re-sampled on exit.
+- **Editing**: Enter/Escape to exit edit mode, Delete/Backspace to remove vertex (min 3 vertices), Ctrl+Z/Y for undo/redo. Camera locks during editing. Vertex elevations are cleared during edits and re-sampled on exit. Guards against `isMoving`.
+- **Move**: Context menu → `startMove(id)` resets history, `applyMovePositions(id, newPositions)` saves pre/post-move snapshots. Entity updated via `updatePolygonEntity` helper (updates hierarchy, position, label in-place). Ghost preview and highlight managed by `useEntityMove`. Undo/redo after move restores entity state.
 - **Area calculation**: Spherical polygon formula with authalic sphere (R = 6371000m): `R² × |sum(dLon × sin(avgLat))| / 2`.
 - **Perimeter**: Geodesic distance via `EllipsoidGeodesic.surfaceDistance` for each edge (includes closing edge).
 - **Smart units**: Area < 10,000 m² → m², < 1,000,000 m² → ha (hectares), ≥ 1,000,000 m² → km². Perimeter < 1000m → m, ≥ 1000m → km.
@@ -299,7 +307,9 @@ Define z-index in steps of 100 to prevent overlap conflicts:
 | Layer | z-index | Elements |
 |-------|---------|----------|
 | Map controls | 100 | Toolbox, CesiumNavigation |
+| Map popups | 250 | MapPopup (card + leader line) |
 | Side panels | 200 | SidePanel and all tool panels |
+| Context menus | 300 | MapContextMenu |
 | Modals / popovers | 300 | Popconfirm, Dropdown, Modal |
 | Floating tooltips | 400 | profile-tooltip, map labels |
 

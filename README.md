@@ -32,6 +32,8 @@ cesiumGeojson/
 │   │       │   ├── GeoPath.vue          # 地质路径规划与剖面分析
 │   │       │   └── GeoPolygon.vue       # 多边形勘测（面积/坡度/裁切）
 │   │       └── shared/                  # 可复用子组件
+│   │           ├── MapPopup.vue         # 左键弹出气泡 + SVG 牵引线
+│   │           ├── MapContextMenu.vue   # 右键上下文菜单
 │   │           ├── ElevationProfile.vue # 高程剖面 SVG 图表
 │   │           ├── VertexTable.vue      # 顶点坐标表格
 │   │           ├── SlopeAnalysis.vue    # 坡度分析统计
@@ -49,14 +51,17 @@ cesiumGeojson/
 │   │   └── geoPolygonStore.ts           # 多边形勘测（CRUD/坡度/裁切）
 │   ├── types/
 │   │   ├── geoPath.ts                   # 路径/剖面类型定义
-│   │   └── geoPolygon.ts                # 多边形/坡度分析类型定义
+│   │   ├── geoPolygon.ts                # 多边形/坡度分析类型定义
+│   │   └── slopeAnalysis.ts             # 坡度分析类型定义
 │   ├── utils/
 │   │   ├── cesium/
 │   │   │   ├── viewer.ts                # Viewer 创建与初始化
 │   │   │   ├── shared/                  # 公共工具
 │   │   │   │   ├── common.ts            # 共享类型与辅助函数
 │   │   │   │   ├── useKeyboardShortcuts.ts # 键盘快捷键（跨平台 Ctrl/Cmd）
-│   │   │   │   └── useSnapping.ts       # 绘制顶点吸附（世界+屏幕距离过滤）
+│   │   │   │   ├── useSnapping.ts       # 绘制顶点吸附（世界+屏幕距离过滤）
+│   │   │   │   ├── useMapInteraction.ts # 全局地图交互（左键气泡/右键菜单）
+│   │   │   │   └── useEntityMove.ts     # 实体移动（幽灵预览/高亮/撤销）
 │   │   │   ├── terrain-clip/            # 地形裁剪
 │   │   │   │   ├── useClipDrawing.ts    # 绘制模式
 │   │   │   │   ├── useClipEditing.ts    # 顶点编辑
@@ -91,11 +96,18 @@ cesiumGeojson/
 
 - **GeoJSON 管理** — 上传 `.geojson` / `.json` 文件，自动解析并着色渲染，支持图层列表搜索、批量显隐、删除全部、要素属性查看
 - **地形裁剪** — 多裁切区域管理、顶点编辑、撤销/重做、反选模式、持久化
-- **地质路径** — 折线绘制与 geodesic 测距、顶点吸附、顶点编辑、地形剖面分析（采样 + SVG 图表）、轨迹播放
-- **多边形勘测** — 多边形绘制与面积/周长测量、顶点吸附、地形坡度分析、逐多边形裁切
+- **地质路径** — 折线绘制与 geodesic 测距、顶点吸附、顶点编辑、实体拖拽移动、地形剖面分析（采样 + SVG 图表）、轨迹播放
+- **多边形勘测** — 多边形绘制与面积/周长测量、顶点吸附、顶点编辑、实体拖拽移动、地形坡度分析、逐多边形裁切
 - **观测点** — 输入经纬度创建标记点，支持自动环绕旋转
 
 所有工具面板使用统一的 SidePanel 组件（玻璃态模糊背景 + 滑入动画）。
+
+### 地图交互
+
+- **左键弹出气泡** — 点击地图要素（路径/多边形/标记点），弹出信息气泡 + SVG 牵引线动画，显示名称/面积/距离等关键信息
+- **3 种视觉变体** — 路径（蓝色）、多边形（绿色）、标记点（紫色），支持自动定位
+- **右键上下文菜单** — 右键点击要素弹出上下文菜单，提供编辑/移动/删除/缩放至等操作，按实体类型动态显示可用操作
+- **按 Shift 操作** — 按住 Shift + 左键点击地图空白处快速创建观测标记点
 
 ### 地形裁剪
 
@@ -112,6 +124,7 @@ cesiumGeojson/
 - **顶点吸附** — 自动吸附已有顶点或边中点（300m 粗筛 + 12px 精筛），按住 Shift 临时禁用
 - **geodesic 测距** — 各分段距离 + 总距离实时显示
 - **顶点编辑** — 拖拽/中点添加/右键删除，Esc 退出，Ctrl+Z/Y 撤销/重做
+- **实体移动** — 选中路径后拖拽移动，幽灵半透明预览 + 高亮反馈，右键/Esc 取消，Ctrl+Z 撤销移动
 - **地形剖面** — 沿路径采样地形高程（10m 间距），计算 min/max/avg/爬升/下降/梯度，SVG 图表展示
 - **轨迹播放** — 沿路径模拟运动动画，支持暂停/继续/拖拽进度/速度倍率（0.5x~4x）/相机跟随
 - **多路径管理** — 8 色循环，列表搜索过滤，批量显隐，删除全部，GeoJSON 导入/导出
@@ -123,6 +136,7 @@ cesiumGeojson/
 - **面积/周长测量** — 球面多边形面积公式（authalic sphere），geodesic 边长求和
 - **智能单位** — 面积自动切换 m² / ha / km²，距离自动切换 m / km
 - **顶点编辑** — 拖拽/中点添加/右键删除，Esc 退出，Ctrl+Z/Y 撤销/重做
+- **实体移动** — 选中多边形后拖拽移动，幽灵半透明预览 + 高亮反馈，右键/Esc 取消，Ctrl+Z 撤销移动
 - **地图标注** — 多边形中心显示名称 + 面积，可批量显隐
 - **顶点数据** — 表格展示 lng/lat/高度/海拔，支持复制和 CSV 导出
 - **顶点高程** — 通过 Cesium `sampleTerrain` 采样各顶点海拔
@@ -197,6 +211,51 @@ pnpm preview   # 预览生产构建
 ```
 
 ## 共享组件与 Composables
+
+### MapContextMenu — 右键上下文菜单
+
+`components/Cesium/shared/MapContextMenu.vue`
+
+地图要素右键菜单，按实体类型动态显示可用操作：
+
+- 支持路径、多边形、标记点三种实体类型
+- 操作项：编辑顶点、移动、删除、缩放至、复制坐标
+- 使用 `getById` 查找实体并联动 store 操作
+- 点击菜单项后自动关闭，点击地图空白处取消
+
+### MapPopup — 左键弹出气泡
+
+`components/Cesium/shared/MapPopup.vue`
+
+点击地图要素后弹出信息卡片，带 SVG 牵引线动画：
+
+- 显示实体名称、类型、关键测量数据
+- 3 种视觉变体：路径（蓝色）、多边形（绿色）、标记点（紫色）
+- 牵引线从要素中心指向弹出卡片
+- 支持自动定位至要素视角
+
+### useEntityMove — 实体拖拽移动
+
+`utils/cesium/shared/useEntityMove.ts`
+
+地图实体拖拽移动 Composable，支持路径和多边形：
+
+- `startMove(context)` — 进入移动模式，保存原始位置、创建幽灵半透明实体、高亮原实体
+- 鼠标拖动时实时计算 `Cartesian3.subtract(globePos, originalCenter)` 增量，更新幽灵实体
+- `onConfirm(id, newPositions)` — 左键确认移动，清理幽灵/高亮，回调 store 保存新位置
+- 右键 / Escape 取消，恢复原始位置
+- 支持 `history.reset()` 隔离移动操作 undo 栈
+
+### useMapInteraction — 全局地图交互
+
+`utils/cesium/shared/useMapInteraction.ts`
+
+全局地图点击交互 Composable，统一管理左键气泡与右键菜单：
+
+- 左键点击：`scene.pick` 检测命中实体，触发 MapPopup 显示
+- 右键点击：`scene.pick` 检测命中实体，触发 MapContextMenu 显示
+- 按住 Shift + 左键点击空白处：创建观测标记点
+- 在 `index.vue` 中初始化，贯穿全局
 
 ### ListToolbar — 通用列表工具栏
 
