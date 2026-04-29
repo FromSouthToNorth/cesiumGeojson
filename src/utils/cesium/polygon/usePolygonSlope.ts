@@ -116,9 +116,14 @@ export async function analyzePolygonSlope(
   const finalCols = Math.max(2, Math.round(widthM / gridSpacing));
   const finalRows = Math.max(2, Math.round(heightM / gridSpacing));
 
-  // 4. 生成多边形内部网格点
+  // 4+6. 生成多边形内部网格点并提取有效点（合并两次遍历，消除重复 pointInPolygon）
   const verts = positions.map((p) => ({ lon: p.longitude, lat: p.latitude }));
+  const R = finalRows + 1;
+  const C = finalCols + 1;
+  const grid: (number | null)[][] = Array.from({ length: R }, () => Array(C).fill(null));
+  const validPoints: { lon: number; lat: number; elev: number; ri: number; ci: number }[] = [];
   const sampleCartos: Cartographic[] = [];
+  const sampleCoords: { r: number; c: number }[] = [];
 
   for (let r = 0; r <= finalRows; r++) {
     const lat = minLat + (latRange * r) / finalRows;
@@ -126,6 +131,7 @@ export async function analyzePolygonSlope(
       const lon = minLon + (lonRange * c) / finalCols;
       if (pointInPolygon(lon, lat, verts)) {
         sampleCartos.push(new Cartographic(lon, lat, 0));
+        sampleCoords.push({ r, c });
       }
     }
   }
@@ -135,24 +141,15 @@ export async function analyzePolygonSlope(
   // 5. 采样地形
   const sampled = await sampleTerrain(terrainProvider, terrainLevel, sampleCartos);
 
-  // 6. 提取有效点，同时构建 2D 网格方便邻域查找
-  const R = finalRows + 1;
-  const C = finalCols + 1;
-  const grid: (number | null)[][] = Array.from({ length: R }, () => Array(C).fill(null));
-  const validPoints: { lon: number; lat: number; elev: number; ri: number; ci: number }[] = [];
-  let idx = 0;
-  for (let r = 0; r <= finalRows; r++) {
-    const lat = minLat + (latRange * r) / finalRows;
-    for (let c = 0; c <= finalCols; c++) {
-      if (idx >= sampleCartos.length) break;
-      const isInside = pointInPolygon(minLon + (lonRange * c) / finalCols, lat, verts);
-      if (!isInside) continue;
-      const h = sampled[idx]?.height;
-      if (h != null && isFinite(h)) {
-        grid[r][c] = h;
-        validPoints.push({ lon: minLon + (lonRange * c) / finalCols, lat, elev: h, ri: r, ci: c });
-      }
-      idx++;
+  // 6. 使用采样结果填充 grid 和 validPoints（无需再次调用 pointInPolygon）
+  for (let idx = 0; idx < sampled.length; idx++) {
+    const { r, c } = sampleCoords[idx];
+    const h = sampled[idx]?.height;
+    if (h != null && isFinite(h)) {
+      grid[r][c] = h;
+      const lon = minLon + (lonRange * c) / finalCols;
+      const lat = minLat + (latRange * r) / finalRows;
+      validPoints.push({ lon, lat, elev: h, ri: r, ci: c });
     }
   }
 

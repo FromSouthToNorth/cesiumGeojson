@@ -15,7 +15,6 @@
     <div class="editing-tip">
       拖动顶点调整形状 · 点击线段添加顶点 · 右键顶点删除<br />
       <kbd>Delete</kbd> 选中删除 · <kbd>Ctrl+Z</kbd> 撤销 · <kbd>Esc</kbd> 退出<br />
-      <span class="camera-lock-hint">编辑期间相机已锁定</span>
     </div>
     <div class="vertex-count">共 {{ vertexCount }} 个顶点</div>
   </template>

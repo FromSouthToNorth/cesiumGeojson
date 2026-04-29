@@ -380,13 +380,18 @@ function onProfileMouseMove(e: MouseEvent) {
   const dataDist = (((mouseX / rect.width) * chartW - padL) / plotW) * maxD;
 
   let nearestIdx = 0;
-  let minGap = Infinity;
-  for (let i = 0; i < distances.length; i++) {
-    const gap = Math.abs(distances[i] - dataDist);
-    if (gap < minGap) {
-      minGap = gap;
-      nearestIdx = i;
-    }
+  // distances 为单调递增数组，使用二分查找代替线性扫描 O(log n)
+  let lo = 0, hi = distances.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (distances[mid] < dataDist) lo = mid + 1;
+    else hi = mid;
+  }
+  nearestIdx = lo;
+  if (lo > 0) {
+    const dPrev = Math.abs(distances[lo - 1] - dataDist);
+    const dCurr = Math.abs(distances[lo] - dataDist);
+    if (dPrev < dCurr) nearestIdx = lo - 1;
   }
 
   const distance = distances[nearestIdx];

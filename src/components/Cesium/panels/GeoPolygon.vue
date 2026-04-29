@@ -3,7 +3,7 @@
   支持多边行绘制、面积/周长测量、GeoJSON 导出
 -->
 <template>
-  <SidePanel :visible="visible" title="多边形勘测" @update:visible="emit('update:visible', $event)">
+  <SidePanel :visible="visible" title="多边形勘测" :disableEscape="store.isDrawing || store.isEditing" @update:visible="emit('update:visible', $event)">
     <!-- ── 状态1：空闲 ── -->
     <template v-if="!store.isDrawing && !store.hasPolygons">
       <div class="empty-state">

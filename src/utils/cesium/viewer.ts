@@ -25,6 +25,8 @@ export function createViewer(container: HTMLElement) {
     homeButton: false,
     sceneModePicker: false,
     navigationHelpButton: false,
+    requestRenderMode: true,
+    maximumRenderTimeChange: Infinity,
   });
   terrain.readyEvent.addEventListener(() => terrainEventHandler(viewer));
 

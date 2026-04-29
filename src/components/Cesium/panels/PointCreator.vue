@@ -5,45 +5,32 @@
 -->
 <template>
   <SidePanel :visible="visible" title="添加观测点" @update:visible="emit('update:visible', $event)">
+    <!-- 地图选点模式 -->
+    <div class="map-draw-section">
+      <Button block :type="isMapDrawing ? 'primary' : 'default'" :danger="isMapDrawing" aria-label="地图选点"
+        @click="toggleMapDrawing">
+        <PushpinOutlined /> {{ isMapDrawing ? '取消选点' : '地图选点' }}
+      </Button>
+      <div v-if="isMapDrawing" class="map-draw-hint">
+        <AimOutlined /> 点击地图放置观测点，按 <kbd>Esc</kbd> 取消
+      </div>
+    </div>
+
+    <div class="divider-text">或手动输入坐标</div>
+
     <Form layout="vertical" :model="form">
       <Form.Item label="经度 (Longitude)" required :validate-status="validation.lng.status" :help="validation.lng.help">
-        <InputNumber
-          v-model:value="form.lng"
-          :min="-180"
-          :max="180"
-          :step="0.01"
-          :precision="6"
-          style="width: 100%"
-          placeholder="例如: 116.397"
-          @blur="validateLng"
-        />
+        <InputNumber v-model:value="form.lng" :min="-180" :max="180" :step="0.01" :precision="6" style="width: 100%"
+          placeholder="例如: 116.397" @blur="validateLng" />
       </Form.Item>
       <Form.Item label="纬度 (Latitude)" required :validate-status="validation.lat.status" :help="validation.lat.help">
-        <InputNumber
-          v-model:value="form.lat"
-          :min="-90"
-          :max="90"
-          :step="0.01"
-          :precision="6"
-          style="width: 100%"
-          placeholder="例如: 39.908"
-          @blur="validateLat"
-        />
+        <InputNumber v-model:value="form.lat" :min="-90" :max="90" :step="0.01" :precision="6" style="width: 100%"
+          placeholder="例如: 39.908" @blur="validateLat" />
       </Form.Item>
-      <Form.Item
-        label="海拔 (Height) 米 — 留空自动使用地形高度"
-        :validate-status="validation.alt.status"
-        :help="validation.alt.help"
-      >
-        <InputNumber
-          v-model:value="form.alt"
-          :min="-1000"
-          :max="90000"
-          :step="1"
-          style="width: 100%"
-          placeholder="留空则采样地形高度"
-          @blur="validateAlt"
-        />
+      <Form.Item label="海拔 (Height) 米 — 留空自动使用地形高度" :validate-status="validation.alt.status"
+        :help="validation.alt.help">
+        <InputNumber v-model:value="form.alt" :min="-1000" :max="90000" :step="1" style="width: 100%"
+          placeholder="留空则采样地形高度" @blur="validateAlt" />
       </Form.Item>
       <Form.Item>
         <Checkbox v-model:checked="keepOpen">保持面板开启（连续创建）</Checkbox>
@@ -85,10 +72,11 @@
 <script setup lang="ts">
 import { ref, reactive, toRaw, h, onUnmounted } from 'vue';
 import { Button, Form, InputNumber, Checkbox, Popconfirm, Dropdown, message } from 'ant-design-vue';
-import { EnvironmentOutlined, AimOutlined, CloseOutlined, ZoomInOutlined, MoreOutlined } from '@ant-design/icons-vue';
+import { EnvironmentOutlined, AimOutlined, CloseOutlined, ZoomInOutlined, MoreOutlined, PushpinOutlined } from '@ant-design/icons-vue';
 import { useCesiumStore } from '@/stores/cesiumStore';
-import { Cartesian3, Cartographic, sampleTerrain, HeadingPitchRange, Math as CesiumMath, Matrix4, Color } from 'cesium';
+import { Cartesian3, Cartographic, sampleTerrain, HeadingPitchRange, Math as CesiumMath, Matrix4, Color, ScreenSpaceEventHandler, ScreenSpaceEventType, HeightReference } from 'cesium';
 import type { Viewer, Entity } from 'cesium';
+import { pickGlobe } from '@/utils/cesium/shared/common';
 import { SidePanel } from '.';
 
 defineOptions({ name: 'PointCreator' });
@@ -116,6 +104,9 @@ const keepOpen = ref(false); // 连续创建模式：保持面板开启
 const isRotating = ref(false); // 是否正在自动旋转
 const rotatingPointId = ref<number | null>(null); // 当前旋转的点 ID
 const points = ref<PointRecord[]>([]); // 已创建的所有点
+const isMapDrawing = ref(false);
+let mapHandler: ScreenSpaceEventHandler | null = null;
+let escapeKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 let nextId = 1;
 
 const form = reactive({
@@ -348,6 +339,144 @@ async function handleCreate() {
   }
 }
 
+/* ───────── 地图选点 ───────── */
+
+function toggleMapDrawing() {
+  if (isMapDrawing.value) {
+    stopMapDrawing();
+  } else {
+    startMapDrawing();
+  }
+}
+
+function startMapDrawing() {
+  const v = toRaw(cesiumStore.viewer);
+  if (!v || v.isDestroyed()) return;
+
+  isMapDrawing.value = true;
+  v.canvas.style.cursor = 'crosshair';
+
+  mapHandler = new ScreenSpaceEventHandler(v.canvas);
+  mapHandler.setInputAction((movement: any) => {
+    const v2 = toRaw(cesiumStore.viewer);
+    if (!v2 || v2.isDestroyed()) return;
+    const cartesian = pickGlobe(v2, movement.position);
+    if (cartesian) {
+      createPointFromPosition(cartesian);
+      if (!keepOpen.value) {
+        stopMapDrawing();
+      }
+    }
+  }, ScreenSpaceEventType.LEFT_CLICK);
+
+  // 右键结束绘制
+  mapHandler.setInputAction(() => {
+    stopMapDrawing();
+  }, ScreenSpaceEventType.RIGHT_CLICK);
+
+  // 使用捕获阶段监听，在 SidePanel 的文档监听器之前拦截 Escape
+  escapeKeyHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      stopMapDrawing();
+    } else if (e.key === 'Backspace' && points.value.length > 0) {
+      e.preventDefault();
+      removePoint(points.value.length - 1);
+      message.info('已撤销最后一个观测点');
+    }
+  };
+  window.addEventListener('keydown', escapeKeyHandler, { capture: true });
+}
+
+function stopMapDrawing() {
+  if (mapHandler) {
+    mapHandler.destroy();
+    mapHandler = null;
+  }
+  if (escapeKeyHandler) {
+    window.removeEventListener('keydown', escapeKeyHandler, { capture: true });
+    escapeKeyHandler = null;
+  }
+  const v = toRaw(cesiumStore.viewer);
+  if (v && !v.isDestroyed()) {
+    v.canvas.style.cursor = 'default';
+  }
+  isMapDrawing.value = false;
+}
+
+async function createPointFromPosition(cartesian: Cartesian3) {
+  const v = toRaw(cesiumStore.viewer);
+  if (!v || v.isDestroyed()) return;
+
+  const carto = Cartographic.fromCartesian(cartesian);
+  const lng = CesiumMath.toDegrees(carto.longitude);
+  const lat = CesiumMath.toDegrees(carto.latitude);
+
+  isCreating.value = true;
+  try {
+    let position: Cartesian3;
+    const useCustomAlt = form.alt !== null;
+
+    if (useCustomAlt) {
+      const alt = form.alt as number;
+      position = Cartesian3.fromDegrees(lng, lat, alt);
+    } else {
+      position = cartesian;
+    }
+
+    const entityId = `point_${nextId}`;
+    const pointId = nextId;
+
+    // 计算海拔显示值
+    const altDisplay = useCustomAlt ? (form.alt as number) : (carto.height ?? 0);
+
+    const entity = v.entities.add({
+      id: entityId,
+      position,
+      point: {
+        pixelSize: 14,
+        color: Color.RED,
+        outlineColor: Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: useCustomAlt ? HeightReference.NONE : HeightReference.CLAMP_TO_GROUND,
+      },
+      label: {
+        text: `${lng.toFixed(4)}, ${lat.toFixed(4)}`,
+        font: '13px sans-serif',
+        fillColor: Color.WHITE,
+        outlineColor: Color.BLACK,
+        outlineWidth: 2,
+        pixelOffset: { x: 0, y: -20 },
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: useCustomAlt ? HeightReference.NONE : HeightReference.CLAMP_TO_GROUND,
+      },
+      description: `经度: ${lng}, 纬度: ${lat}, 海拔: ${altDisplay.toFixed(1)} m${useCustomAlt ? ' (手动)' : ' (地形)'}`,
+    });
+
+    // 存储自删除回调，供右键菜单使用（按 ID 查找，避免引用不一致）
+    (entity as any)._removeSelf = () => {
+      const idx = points.value.findIndex((p) => p.id === pointId);
+      if (idx >= 0) removePoint(idx);
+    };
+
+    nextId++;
+    points.value.push({ id: pointId, entity, lng, lat });
+
+    stopRotation();
+    message.success(`点位已创建 (海拔: ${altDisplay.toFixed(1)} m)`);
+
+    if (autoRotate.value) {
+      startRotation(v, position, pointId);
+    }
+  } catch (err) {
+    console.error('创建点位失败:', err);
+    message.error('创建点位失败');
+  } finally {
+    isCreating.value = false;
+  }
+}
+
 /* ───────── 自动旋转逻辑 ───────── */
 
 /**
@@ -382,8 +511,34 @@ function startRotation(viewer: Viewer, center: Cartesian3, pointId: number) {
   };
 }
 
+/* ───────── 全局撤销快捷键 ───────── */
+
+let globalUndoHandler: ((e: KeyboardEvent) => void) | null = null;
+
+function setupGlobalUndo() {
+  globalUndoHandler = (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && points.value.length > 0) {
+      e.preventDefault();
+      removePoint(points.value.length - 1);
+      message.info('已撤销最后一个观测点');
+    }
+  };
+  window.addEventListener('keydown', globalUndoHandler);
+}
+
+function teardownGlobalUndo() {
+  if (globalUndoHandler) {
+    window.removeEventListener('keydown', globalUndoHandler);
+    globalUndoHandler = null;
+  }
+}
+
+setupGlobalUndo();
+
 onUnmounted(() => {
+  teardownGlobalUndo();
   stopRotation();
+  stopMapDrawing();
 });
 </script>
 
@@ -456,6 +611,63 @@ onUnmounted(() => {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.map-draw-section {
+  margin-bottom: 8px;
+}
+
+.map-draw-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--color-primary, #1677ff);
+  color: #fff;
+  font-size: 13px;
+}
+
+.map-draw-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid rgba(255 255 255 / 0.4);
+  border-radius: 3px;
+  background: rgba(255 255 255 / 0.15);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+
+.divider-text {
+  position: relative;
+  margin: 16px 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.divider-text::before,
+.divider-text::after {
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 48px);
+  height: 1px;
+  background: var(--surface-border);
+  content: '';
+}
+
+.divider-text::before {
+  left: 0;
+}
+
+.divider-text::after {
+  right: 0;
 }
 
 .action-btn {

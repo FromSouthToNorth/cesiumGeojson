@@ -53,6 +53,7 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDef[]) {
       if (def.shift && !e.shiftKey) continue;
 
       e.preventDefault();
+      e.stopPropagation();
       def.handler(e);
       return;
     }
@@ -61,13 +62,13 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDef[]) {
   function setup() {
     if (active) return;
     active = true;
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, { capture: true });
   }
 
   function teardown() {
     if (!active) return;
     active = false;
-    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keydown', onKeyDown, { capture: true });
   }
 
   return { setup, teardown };

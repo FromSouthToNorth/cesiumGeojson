@@ -3,7 +3,7 @@
  * 多路径 CRUD、绘制协调、测量计算、GeoJSON 导入导出
  * ============================== */
 
-import { ref, computed, toRaw } from 'vue';
+import { ref, computed, toRaw, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import { BoundingSphere, Cartesian3, Cartographic, Color, EllipsoidGeodesic } from 'cesium';
 import { message } from 'ant-design-vue';
@@ -80,7 +80,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   const paths = ref<GeoPath[]>([]);
   const activePathId = ref<string | null>(null);
   /** 绘制中与 usePathDrawing 共享的顶点 ref */
-  const positions = ref<Cartesian3[]>([]);
+  const positions = shallowRef<Cartesian3[]>([]);
   const isDrawing = ref(false);
   const isEditing = ref(false);
   const profileLoading = ref(false);

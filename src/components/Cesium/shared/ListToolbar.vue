@@ -11,32 +11,19 @@
     <div class="toolbar-actions">
       <slot name="actions" />
       <Tooltip :title="allVisible ? '全部隐藏' : '全部显示'">
-        <Button
-          size="small"
-          :type="allVisible ? 'default' : 'primary'"
-          class="icon-only-btn"
-          :aria-label="allVisible ? '全部隐藏' : '全部显示'"
-          @click="emit('toggleAllVisibility')"
-        >
+        <Button size="small" :type="allVisible ? 'default' : 'primary'" class="icon-only-btn"
+          :aria-label="allVisible ? '全部隐藏' : '全部显示'" @click="emit('toggleAllVisibility')">
           <EyeOutlined v-if="allVisible" />
           <EyeInvisibleOutlined v-else />
         </Button>
       </Tooltip>
-      <Tooltip title="删除全部">
-        <Popconfirm :title="`确认删除所有${itemName}？`" placement="topRight" @confirm="emit('removeAll')">
-          <Button danger size="small" type="dashed" class="icon-only-btn" :aria-label="`删除全部${itemName}`">
-            <CloseCircleOutlined />
-          </Button>
-        </Popconfirm>
-      </Tooltip>
-      <InputSearch
-        :value="searchQuery"
-        :placeholder="searchPlaceholder"
-        allow-clear
-        size="small"
-        class="layer-search"
-        @update:value="(v: string) => emit('update:searchQuery', v)"
-      />
+      <Popconfirm :title="`确认删除所有${itemName}？`" placement="topRight" @confirm="emit('removeAll')">
+        <Button danger size="small" type="dashed" class="icon-only-btn" :aria-label="`删除全部${itemName}`">
+          <CloseCircleOutlined />
+        </Button>
+      </Popconfirm>
+      <InputSearch :value="searchQuery" :placeholder="searchPlaceholder" allow-clear size="small" class="layer-search"
+        @update:value="(v: string) => emit('update:searchQuery', v)" />
     </div>
   </div>
 </template>

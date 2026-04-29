@@ -5,4 +5,5 @@ export { default as SlopeAnalysis } from './SlopeAnalysis.vue';
 export { default as VertexTable } from './VertexTable.vue';
 export { default as MapPopup } from './MapPopup.vue';
 export { default as MapContextMenu } from './MapContextMenu.vue';
+export { default as BubbleDialog } from './BubbleDialog.vue';
 export * from './popupVariants';

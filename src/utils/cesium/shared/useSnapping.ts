@@ -13,7 +13,7 @@
 
 import { ref, toRaw } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
-import { Cartesian3, Cartesian2, Color, HeightReference, PolylineDashMaterialProperty } from 'cesium';
+import { Cartesian3, Cartesian2, Color, HeightReference, PolylineDashMaterialProperty, PointPrimitiveCollection } from 'cesium';
 import type { Viewer } from 'cesium';
 import { isValidViewer } from './common';
 
@@ -81,8 +81,8 @@ export function useSnapping(options: UseSnappingOptions) {
   // 吸附辅助线 entity（虚线）
   let snapLineEntity: any = null;
 
-  // 目标顶点标记 entity 列表
-  let targetMarkerEntities: any[] = [];
+  // 目标顶点标记 PointPrimitiveCollection（批量渲染优化）
+  let snapTargetCollection: PointPrimitiveCollection | null = null;
 
   // 复用 scratch 变量
   const _scratchToVertex = new Cartesian3();
@@ -192,6 +192,7 @@ export function useSnapping(options: UseSnappingOptions) {
 
   /**
    * 显示所有目标顶点的标记点
+   * 使用 PointPrimitiveCollection 批量渲染替代逐个 Entity 创建
    * 顶点用高亮金色，中点用高亮青色，均带深色描边以增强对比度
    */
   function showSnapTargets() {
@@ -202,35 +203,36 @@ export function useSnapping(options: UseSnappingOptions) {
     // 限制显示数量，避免过多标记拖慢渲染
     const maxMarkers = 200;
     const displayTargets = cachedTargets.slice(0, maxMarkers);
+    if (displayTargets.length === 0) return;
+
+    // 使用 PointPrimitiveCollection 批量渲染（单次绘制调用替代 200 个独立 Entity）
+    const col = v.scene.primitives.add(new PointPrimitiveCollection());
+    if (!col) return;
+    snapTargetCollection = col;
 
     for (let i = 0; i < displayTargets.length; i++) {
       const src = displayTargets[i];
       const isMid = src.isMidpoint ?? false;
-      targetMarkerEntities.push(
-        v.entities.add({
-          position: src.position,
-          point: {
-            pixelSize: isMid ? 8 : 10,
-            color: isMid ? new Color(0.0, 0.9, 1.0, 0.9) : new Color(1.0, 0.84, 0.0, 0.95),
-            outlineColor: isMid ? new Color(0.0, 0.3, 0.35, 1.0) : new Color(0.6, 0.3, 0.0, 1.0),
-            outlineWidth: 2,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            heightReference: HeightReference.CLAMP_TO_GROUND,
-          },
-        }),
-      );
+      col.add({
+        position: src.position,
+        pixelSize: isMid ? 8 : 10,
+        color: isMid ? new Color(0.0, 0.9, 1.0, 0.9) : new Color(1.0, 0.84, 0.0, 0.95),
+        outlineColor: isMid ? new Color(0.0, 0.3, 0.35, 1.0) : new Color(0.6, 0.3, 0.0, 1.0),
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      });
     }
   }
 
   /** 隐藏所有目标顶点标记 */
   function hideSnapTargets() {
     const v = getViewer();
-    if (v) {
-      for (let i = 0; i < targetMarkerEntities.length; i++) {
-        v.entities.remove(targetMarkerEntities[i]);
+    if (snapTargetCollection) {
+      if (v && !v.isDestroyed()) {
+        v.scene.primitives.remove(snapTargetCollection);
       }
+      snapTargetCollection = null;
     }
-    targetMarkerEntities = [];
   }
 
   /* ==============================

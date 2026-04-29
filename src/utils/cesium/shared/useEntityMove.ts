@@ -72,9 +72,9 @@ export function useEntityMove(options: EntityMoveOptions) {
       ghostEntity = v.entities.add({
         polygon: {
           hierarchy: ctx.positions,
-          material: color.withAlpha(0.1),
+          material: color.withAlpha(0.2),
           outline: true,
-          outlineColor: color.withAlpha(0.5),
+          outlineColor: color.withAlpha(0.4),
           outlineWidth: 2,
         },
       });
@@ -83,7 +83,7 @@ export function useEntityMove(options: EntityMoveOptions) {
         polyline: {
           positions: ctx.positions,
           width: 6,
-          material: color.withAlpha(0.3),
+          material: color.withAlpha(0.4),
           clampToGround: true,
         },
       });
@@ -103,9 +103,11 @@ export function useEntityMove(options: EntityMoveOptions) {
 
     if (ctx.type === 'geoPolygon' && entity.polygon) {
       const poly = entity.polygon as any;
-      savedStyle.material = poly.material?.getValue?.() ?? poly.material;
-      savedStyle.outlineColor = poly.outlineColor?.getValue?.() ?? poly.outlineColor;
-      savedStyle.outlineWidth = poly.outlineWidth?.getValue?.() ?? poly.outlineWidth;
+      // 保存原始 Property 对象（而非调用 getValue() 得到普通对象），
+      // 避免 restore 时 Cesium 的 setter 无法推断 material 类型
+      savedStyle.material = poly.material;
+      savedStyle.outlineColor = poly.outlineColor;
+      savedStyle.outlineWidth = poly.outlineWidth;
 
       const color = Color.fromCssColorString(ctx.color);
       poly.outlineColor = color.withAlpha(0.9);
@@ -113,7 +115,7 @@ export function useEntityMove(options: EntityMoveOptions) {
       poly.material = color.withAlpha(0.4);
     } else if (ctx.type === 'geoPath' && entity.polyline) {
       const pl = entity.polyline as any;
-      savedStyle.width = pl.width?.getValue?.() ?? pl.width;
+      savedStyle.width = pl.width;
       pl.width = 5;
     }
   }

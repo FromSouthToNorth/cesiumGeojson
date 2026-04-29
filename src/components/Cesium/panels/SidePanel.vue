@@ -29,15 +29,17 @@ defineOptions({ name: 'SidePanel' });
 const props = defineProps<{
   visible: boolean;
   title: string;
+  /** 绘制/编辑中禁用 Escape 关闭，防止与绘图快捷键冲突 */
+  disableEscape?: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:visible': [value: boolean];
 }>();
 
-/** Escape 键关闭面板 */
+/** Escape 键关闭面板（绘制/编辑中不关闭） */
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.visible) {
+  if (e.key === 'Escape' && props.visible && !props.disableEscape) {
     emit('update:visible', false);
   }
 }

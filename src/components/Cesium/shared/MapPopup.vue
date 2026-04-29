@@ -1,78 +1,49 @@
 <!--
   MapPopup.vue —— 左键点击弹出气泡
-  玻璃态卡片 + SVG 牵引线连接实体，支持 3 种视觉风格
+  内部使用 BubbleDialog 外壳，注入实体类型专属内容
 -->
 <template>
-  <div
-    v-if="visible && entity && screenPos"
-    class="popup-shell"
-    @click.stop
-  >
-    <!-- SVG 牵引线 -->
-    <svg class="leader-svg">
-      <path :d="leaderPath" class="leader-line" />
-      <circle
-        v-if="leaderPath"
-        :cx="screenPos.x"
-        :cy="screenPos.y"
-        r="3"
-        class="leader-dot"
-      />
-    </svg>
+  <BubbleDialog :visible="visible && !!entity" :screen-pos="screenPos" :style-variant="style" :title="entityName"
+    :width="280" :show-close-button="true" @close="close">
+    <template #header-left>
+      <span v-if="entity" class="pc-type-badge" :class="`pc-type-badge--${entity.type}`">
+        <span v-if="colorDot" class="pc-color-dot" :style="{ background: colorDot }" />
+        {{ typeLabel }}
+      </span>
+    </template>
+    <template #header-actions>
+      <button class="pc-icon-btn" aria-label="切换样式" @click="cycleVariant">
+        <BgColorsOutlined />
+      </button>
+    </template>
 
-    <!-- 气泡卡片 -->
-    <div ref="cardRef" class="popup-card" :class="[`popup-card--${style}`]" :style="cardStyle">
-      <!-- 头部 -->
-      <div class="pc-header">
-        <span class="pc-type-badge" :class="`pc-type-badge--${entity.type}`">
-          <span v-if="colorDot" class="pc-color-dot" :style="{ background: colorDot }" />
-          {{ typeLabel }}
-        </span>
-        <div class="pc-header-actions">
-          <button class="pc-icon-btn" aria-label="切换样式" @click="cycleVariant">
-            <BgColorsOutlined />
-          </button>
-          <button class="pc-icon-btn" aria-label="关闭" @click="close">
-            <CloseOutlined />
-          </button>
+    <!-- 主体 -->
+    <div class="pc-body">
+      <div class="pc-details">
+        <div v-for="(row, i) in detailRows" :key="i" class="pc-detail-row">
+          <span class="pc-detail-label">{{ row.label }}</span>
+          <span class="pc-detail-value">{{ row.value }}</span>
         </div>
-      </div>
-
-      <!-- 主体 -->
-      <div class="pc-body">
-        <div class="pc-title">{{ entityName }}</div>
-        <div class="pc-details">
-          <div v-for="(row, i) in detailRows" :key="i" class="pc-detail-row">
-            <span class="pc-detail-label">{{ row.label }}</span>
-            <span class="pc-detail-value">{{ row.value }}</span>
-          </div>
-          <!-- GeoJSON 属性 -->
-          <div v-for="(val, key) in geoProperties" :key="key" class="pc-detail-row">
-            <span class="pc-detail-label">{{ key }}</span>
-            <span class="pc-detail-value pc-detail-value--prop">{{ val }}</span>
-          </div>
+        <div v-for="(val, key) in geoProperties" :key="key" class="pc-detail-row">
+          <span class="pc-detail-label">{{ key }}</span>
+          <span class="pc-detail-value pc-detail-value--prop">{{ val }}</span>
         </div>
-      </div>
-
-      <!-- 底部操作按钮 -->
-      <div class="pc-footer">
-        <button
-          v-for="(btn, i) in actionButtons"
-          :key="i"
-          class="pc-footer-btn"
-          :class="{ 'pc-footer-btn--primary': btn.primary }"
-          @click="btn.handler"
-        >
-          <component :is="btn.icon" class="pc-footer-btn-icon" />
-          <span>{{ btn.label }}</span>
-        </button>
       </div>
     </div>
-  </div>
+
+    <!-- 底部操作按钮 -->
+    <div class="pc-footer">
+      <button v-for="(btn, i) in actionButtons" :key="i" class="pc-footer-btn"
+        :class="{ 'pc-footer-btn--primary': btn.primary }" @click="btn.handler">
+        <component :is="btn.icon" class="pc-footer-btn-icon" />
+        <span>{{ btn.label }}</span>
+      </button>
+    </div>
+  </BubbleDialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { computed, toRaw } from 'vue';
 import {
   AimOutlined,
   EditOutlined,
@@ -82,15 +53,22 @@ import {
   EyeOutlined,
   EyeInvisibleOutlined,
   BgColorsOutlined,
-  CloseOutlined,
 } from '@ant-design/icons-vue';
 import { useGeoPolygonStore, formatArea, formatDist } from '@/stores/geoPolygonStore';
 import { useGeoPathStore } from '@/stores/geoPathStore';
 import { useGeoJsonStore } from '@/stores/geojsonStore';
+import { Cartesian3, Cartographic, Math as CesiumMath } from 'cesium';
 import { useCesiumStore } from '@/stores/cesiumStore';
-import type { PickedEntity, PickedEntityGeoPolygon, PickedEntityGeoPath, PickedEntityGeoJson } from '@/utils/cesium/shared/useMapInteraction';
+import type {
+  PickedEntity,
+  PickedEntityGeoPolygon,
+  PickedEntityGeoPath,
+  PickedEntityGeoJson,
+  PickedEntityPoint,
+} from '@/utils/cesium/shared/useMapInteraction';
 import type { PopupVariantKey } from './popupVariants';
 import { getNextVariant } from './popupVariants';
+import BubbleDialog from './BubbleDialog.vue';
 
 defineOptions({ name: 'MapPopup' });
 
@@ -107,24 +85,22 @@ const emit = defineEmits<{
 }>();
 
 /* ==============================
- *  内部状态
- * ============================== */
-
-const cardRef = ref<HTMLElement | null>(null);
-const cardHeight = ref(180);
-const leaderPath = ref('');
-
-/* ==============================
  *  实体名称 & 类型标签
  * ============================== */
 
 const entityName = computed(() => {
   if (!props.entity) return '';
   switch (props.entity.type) {
-    case 'geoPolygon': return props.entity.polygon.name;
-    case 'geoPath': return props.entity.path.name;
-    case 'geojson': return props.entity.feature.name;
-    default: return '';
+    case 'geoPolygon':
+      return props.entity.polygon.name;
+    case 'geoPath':
+      return props.entity.path.name;
+    case 'geojson':
+      return props.entity.feature.name;
+    case 'point':
+      return '观测点';
+    default:
+      return '';
   }
 });
 
@@ -132,14 +108,17 @@ const colorDot = computed(() => {
   if (!props.entity) return null;
   if (props.entity.type === 'geoPolygon') return props.entity.polygon.color;
   if (props.entity.type === 'geoPath') return props.entity.path.color;
+  if (props.entity.type === 'point') return '#ff4d4f';
   return null;
 });
 
 const typeLabel = computed(() => {
   if (!props.entity) return '';
   switch (props.entity.type) {
-    case 'geoPolygon': return '勘测区域';
-    case 'geoPath': return '地质路径';
+    case 'geoPolygon':
+      return '勘测区域';
+    case 'geoPath':
+      return '地质路径';
     case 'geojson': {
       const e = props.entity.entity;
       if (e.polygon) return '多边形要素';
@@ -150,7 +129,10 @@ const typeLabel = computed(() => {
       if (e.ellipse) return 'Ellipse';
       return '要素';
     }
-    default: return '';
+    case 'point':
+      return '观测点';
+    default:
+      return '';
   }
 });
 
@@ -179,7 +161,19 @@ const detailRows = computed(() => {
     case 'geojson': {
       return [{ label: '图层', value: props.entity.layer.name }];
     }
-    default: return [];
+    case 'point': {
+      const carto = Cartographic.fromCartesian(props.entity.position);
+      const lng = CesiumMath.toDegrees(carto.longitude).toFixed(6);
+      const lat = CesiumMath.toDegrees(carto.latitude).toFixed(6);
+      const alt = carto.height != null ? carto.height.toFixed(1) + ' m' : '—';
+      return [
+        { label: '经度', value: lng },
+        { label: '纬度', value: lat },
+        { label: '海拔', value: alt },
+      ];
+    }
+    default:
+      return [];
   }
 });
 
@@ -221,10 +215,26 @@ function flyToPath(p: PickedEntityGeoPath) {
   emit('close');
 }
 
+function flyToPoint(p: PickedEntityPoint) {
+  const viewer = useCesiumStore().viewer;
+  if (viewer && !(viewer as any).isDestroyed()) {
+    const v = toRaw(viewer);
+    const carto = Cartographic.fromCartesian(p.position);
+    const dest = Cartesian3.fromDegrees(
+      CesiumMath.toDegrees(carto.longitude),
+      CesiumMath.toDegrees(carto.latitude),
+      Math.max(carto.height + 1000, 1000),
+    );
+    v.camera.flyTo({ destination: dest, duration: 1 });
+  }
+  emit('close');
+}
+
 function flyToGeoJson(p: PickedEntityGeoJson) {
   const viewer = useCesiumStore().viewer;
   if (viewer && !(viewer as any).isDestroyed()) {
-    (viewer as any).flyTo(p.entity).catch(() => {});
+    const v = toRaw(viewer);
+    v.flyTo(p.entity).catch(() => { });
   }
   emit('close');
 }
@@ -277,7 +287,7 @@ const actionButtons = computed<ActionBtn[]>(() => {
   if (!props.entity) return [];
   switch (props.entity.type) {
     case 'geoPolygon': {
-      const p = props.entity;
+      const p = toRaw(props.entity);
       const visLabel = p.polygon.show ? '隐藏' : '显示';
       const visIcon = p.polygon.show ? EyeOutlined : EyeInvisibleOutlined;
       return [
@@ -289,7 +299,7 @@ const actionButtons = computed<ActionBtn[]>(() => {
       ];
     }
     case 'geoPath': {
-      const p = props.entity;
+      const p = toRaw(props.entity);
       const visLabel = p.path.show ? '隐藏' : '显示';
       const visIcon = p.path.show ? EyeOutlined : EyeInvisibleOutlined;
       return [
@@ -300,7 +310,7 @@ const actionButtons = computed<ActionBtn[]>(() => {
       ];
     }
     case 'geojson': {
-      const p = props.entity;
+      const p = toRaw(props.entity);
       const visLabel = p.entity.show ? '隐藏' : '显示';
       const visIcon = p.entity.show ? EyeOutlined : EyeInvisibleOutlined;
       return [
@@ -309,88 +319,19 @@ const actionButtons = computed<ActionBtn[]>(() => {
         { icon: EyeInvisibleOutlined, label: '移出', handler: () => removeGeoJson(p) },
       ];
     }
-    default: return [];
+    case 'point': {
+      const p = toRaw(props.entity);
+      return [
+        { icon: AimOutlined, label: '飞行', primary: true, handler: () => flyToPoint(p) },
+      ];
+    }
+    default:
+      return [];
   }
 });
 
 /* ==============================
- *  定位 & 牵引线
- * ============================== */
-
-const POPUP_GAP = 20;
-const CARD_WIDTH = 280;
-const MARGIN = 8;
-
-const cardStyle = computed(() => {
-  if (!props.screenPos) return { display: 'none' };
-
-  let left = props.screenPos.x - CARD_WIDTH / 2;
-  let top = props.screenPos.y - cardHeight.value - POPUP_GAP;
-
-  left = Math.max(MARGIN, Math.min(window.innerWidth - CARD_WIDTH - MARGIN, left));
-  top = Math.max(MARGIN, top);
-
-  return { left: `${left}px`, top: `${top}px` };
-});
-
-function measureCard() {
-  if (cardRef.value) {
-    const rect = cardRef.value.getBoundingClientRect();
-    if (rect.height > 0) {
-      cardHeight.value = rect.height;
-    }
-  }
-}
-
-function computeLeaderPath() {
-  if (!props.screenPos || !cardRef.value) {
-    leaderPath.value = '';
-    return;
-  }
-
-  const rect = cardRef.value.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) {
-    leaderPath.value = '';
-    return;
-  }
-
-  const startX = rect.left + rect.width / 2;
-  const startY = rect.bottom;
-  const endX = props.screenPos.x;
-  const endY = props.screenPos.y;
-
-  const dx = endX - startX;
-  if (Math.abs(dx) < 3) {
-    leaderPath.value = `M ${startX} ${startY} L ${endX} ${endY}`;
-    return;
-  }
-
-  const midY = startY + (endY - startY) * 0.5;
-  const ctrlX = startX + dx * 0.3;
-  leaderPath.value = `M ${startX} ${startY} Q ${ctrlX} ${midY} ${endX} ${endY}`;
-}
-
-watch(
-  [() => props.screenPos, () => props.entity, () => props.visible],
-  async () => {
-    if (props.visible && props.screenPos && props.entity) {
-      await nextTick();
-      measureCard();
-      computeLeaderPath();
-    }
-  },
-  { immediate: false },
-);
-
-watch(
-  () => props.visible,
-  (v) => {
-    if (!v) leaderPath.value = '';
-  },
-);
-
-/* ==============================
- *  样式切换
+ *  样式切换 & 关闭
  * ============================== */
 
 function cycleVariant() {
@@ -400,100 +341,10 @@ function cycleVariant() {
 function close() {
   emit('close');
 }
-
-/* ==============================
- *  窗口 resize
- * ============================== */
-
-function onResize() {
-  if (props.visible) {
-    nextTick(() => {
-      measureCard();
-      computeLeaderPath();
-    });
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('resize', onResize);
-});
-
-onUnmounted(() => {
-  window.removeEventListener('resize', onResize);
-});
 </script>
 
 <style scoped>
-/* ───────── Shell（不拦截事件） ───────── */
-.popup-shell {
-  position: fixed;
-  inset: 0;
-  z-index: 250;
-  pointer-events: none;
-}
-
-/* ───────── SVG 牵引线 ───────── */
-.leader-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.leader-line {
-  fill: none;
-  stroke: var(--color-primary);
-  stroke-width: 1.5px;
-  opacity: 0.55;
-}
-
-.leader-dot {
-  fill: var(--color-primary);
-  opacity: 0.7;
-}
-
-/* ───────── 气泡卡片 ───────── */
-.popup-card {
-  position: fixed;
-  z-index: 251;
-  width: 280px;
-  border-radius: 10px;
-  pointer-events: auto;
-  animation: popupFadeIn 0.2s ease-out;
-}
-
-/* ───────── 3 种视觉变体 ───────── */
-.popup-card--glass {
-  border: 1px solid var(--surface-border);
-  background: var(--surface-bg);
-  box-shadow: 0 8px 32px var(--surface-shadow);
-  backdrop-filter: blur(12px);
-}
-
-.popup-card--minimal {
-  border: 1px solid var(--surface-border);
-  background: color-mix(in srgb, var(--surface-bg) 60%, transparent);
-  box-shadow: none;
-  backdrop-filter: blur(4px);
-}
-
-.popup-card--card {
-  border: 1px solid var(--surface-border);
-  background: color-mix(in srgb, var(--surface-bg) 95%, #000);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  backdrop-filter: none;
-}
-
-/* ───────── 头部 ───────── */
-.pc-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px 6px;
-}
-
+/* ───────── 类型徽章 ───────── */
 .pc-type-badge {
   display: inline-flex;
   align-items: center;
@@ -515,45 +366,9 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.pc-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.pc-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--surface-text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pc-icon-btn:hover {
-  background: var(--surface-hover);
-  color: var(--color-text);
-}
-
 /* ───────── 主体 ───────── */
 .pc-body {
   padding: 6px 12px 8px;
-}
-
-.pc-title {
-  margin-bottom: 6px;
-  color: var(--color-text);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-  word-break: break-word;
 }
 
 .pc-details {
@@ -637,21 +452,25 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-/* ───────── 动画 ───────── */
-@keyframes popupFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+/* ───────── 图标按钮（样式切换） ───────── */
+.pc-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--surface-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .popup-card {
-    animation: none;
-  }
+.pc-icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 </style>

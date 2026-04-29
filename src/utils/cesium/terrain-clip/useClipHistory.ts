@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref, computed, triggerRef } from 'vue';
 import type { Ref } from 'vue';
 import { Cartesian3 } from 'cesium';
 
@@ -52,6 +52,7 @@ export function useClipHistory(positions: Ref<Cartesian3[]>) {
   function applyHistory(snap: Cartesian3[]) {
     positions.value.length = 0;
     snap.forEach((p) => positions.value.push(Cartesian3.clone(p)));
+    triggerRef(positions as any);
   }
 
   /** 撤销一步，返回是否真正执行了撤销 */

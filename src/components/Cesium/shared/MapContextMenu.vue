@@ -4,17 +4,8 @@
 -->
 <template>
   <Transition name="menu">
-    <div
-      v-if="visible"
-      class="menu-overlay"
-      @click.stop="close"
-      @contextmenu.prevent="close"
-    >
-      <div
-        class="context-menu"
-        :style="{ left: `${pos.x}px`, top: `${pos.y}px` }"
-        @click.stop
-      >
+    <div v-if="visible" class="menu-overlay" @click.stop="close" @contextmenu.prevent="close">
+      <div ref="menuRef" class="context-menu" :style="menuStyle" @click.stop>
         <div class="menu-header">
           <span class="menu-title">{{ entityName }}</span>
           <span class="menu-type-badge">{{ typeLabel }}</span>
@@ -41,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import {
   AimOutlined,
   EditOutlined,
@@ -70,6 +61,72 @@ const emit = defineEmits<{
 }>();
 
 /* ==============================
+ *  菜单位置 & Escape 关闭
+ * ============================== */
+
+const MENU_MARGIN = 8;
+const menuRef = ref<HTMLElement | null>(null);
+const menuWidth = ref(0);
+const menuHeight = ref(0);
+
+function measureMenu() {
+  if (menuRef.value) {
+    const rect = menuRef.value.getBoundingClientRect();
+    if (rect.width > 0) menuWidth.value = rect.width;
+    if (rect.height > 0) menuHeight.value = rect.height;
+  }
+}
+
+const menuStyle = computed(() => {
+  const x = props.pos.x;
+  const y = props.pos.y;
+  const w = menuWidth.value || 200;
+  const h = menuHeight.value || 200;
+
+  let left = x;
+  let top = y;
+
+  if (left + w > window.innerWidth - MENU_MARGIN) {
+    left = Math.max(MENU_MARGIN, window.innerWidth - w - MENU_MARGIN);
+  }
+  if (left < MENU_MARGIN) left = MENU_MARGIN;
+  if (top + h > window.innerHeight - MENU_MARGIN) {
+    top = Math.max(MENU_MARGIN, window.innerHeight - h - MENU_MARGIN);
+  }
+  if (top < MENU_MARGIN) top = MENU_MARGIN;
+
+  return { left: `${left}px`, top: `${top}px` };
+});
+
+function onKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') close();
+}
+
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) {
+      document.addEventListener('keydown', onKeyDown);
+    } else {
+      document.removeEventListener('keydown', onKeyDown);
+    }
+  },
+);
+
+watch(
+  () => props.pos,
+  async () => {
+    if (props.visible) {
+      await nextTick();
+      measureMenu();
+    }
+  },
+);
+
+onMounted(() => window.addEventListener('resize', measureMenu));
+onUnmounted(() => window.removeEventListener('resize', measureMenu));
+
+/* ==============================
  *  显示文本
  * ============================== */
 
@@ -82,6 +139,8 @@ const entityName = computed(() => {
       return props.entity.path.name;
     case 'geojson':
       return props.entity.feature.name;
+    case 'point':
+      return '观测点';
     default:
       return '';
   }
@@ -108,6 +167,8 @@ const typeLabel = computed(() => {
       return '地质路径';
     case 'geojson':
       return `要素 · ${geoTypeLabel.value}`;
+    case 'point':
+      return '观测点';
     default:
       return '';
   }
@@ -156,6 +217,12 @@ const actions = computed<MenuItem[]>(() => {
         { id: 'viewProperties', label: '查看属性', icon: InfoCircleOutlined },
         { id: '__sep__', separator: true },
         { id: 'delete', label: '移出视图', icon: EyeInvisibleOutlined, danger: true },
+      ];
+    case 'point':
+      return [
+        { id: 'flyTo', label: '飞行定位', icon: AimOutlined },
+        { id: '__sep__', separator: true },
+        { id: 'delete', label: '删除观测点', icon: DeleteOutlined, danger: true },
       ];
     default:
       return [];

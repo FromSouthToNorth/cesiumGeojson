@@ -3,25 +3,18 @@
   提供绘制、编辑、管理裁切区域的 UI，与 terrainClipStore 绑定的协调器模式
 -->
 <template>
-  <SidePanel :visible="visible" title="地形裁切" @update:visible="emit('update:visible', $event)">
+  <SidePanel :visible="visible" title="地形裁切" :disableEscape="store.isDrawing || store.isEditing"
+    @update:visible="emit('update:visible', $event)">
     <Space direction="vertical" style="width: 100%">
       <!-- 反选按钮 -->
-      <Button
-        block
-        :type="store.inverse ? 'primary' : 'default'"
-        :danger="store.inverse"
-        @click="store.toggleInverse()"
-      >
+      <Button block :type="store.inverse ? 'primary' : 'default'" :danger="store.inverse"
+        @click="store.toggleInverse()">
         {{ store.inverse ? '反选模式：显示区域外部' : '反选：裁切区域内部' }}
       </Button>
 
       <!-- ── 空闲状态：无区域 ── -->
-      <Button
-        v-if="!store.hasRegions && !store.isDrawing && !store.isEditing"
-        type="primary"
-        block
-        @click="store.startDraw()"
-      >
+      <Button v-if="!store.hasRegions && !store.isDrawing && !store.isEditing" type="primary" block
+        @click="store.startDraw()">
         开始绘制区域
       </Button>
 
@@ -35,22 +28,14 @@
       <!-- ── 已有区域（非编辑状态） ── -->
       <template v-if="store.hasRegions && !store.isDrawing && !store.isEditing">
         <div class="region-list">
-          <div
-            v-for="region in store.regions"
-            :key="region.id"
-            class="region-row"
-            :class="{ active: region.id === store.activeRegionId }"
-            @click="store.selectRegion(region.id)"
-          >
+          <div v-for="region in store.regions" :key="region.id" class="region-row"
+            :class="{ active: region.id === store.activeRegionId }" @click="store.selectRegion(region.id)">
             <span class="region-dot" />
             <span class="region-name">{{ region.name }}</span>
             <span class="region-count">{{ region.positions.length }} 顶点</span>
-            <Button size="small" type="link" class="region-act-btn" @click.stop="store.flyToRegion(region.id)"
-              >定位</Button
-            >
-            <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)"
-              >编辑</Button
-            >
+            <Button size="small" type="link" class="region-act-btn"
+              @click.stop="store.flyToRegion(region.id)">定位</Button>
+            <Button size="small" type="link" class="region-act-btn" @click.stop="store.startEdit(region.id)">编辑</Button>
             <Popconfirm title="确认删除该区域？" placement="left" @confirm.stop="store.clearRegion(region.id)">
               <Button size="small" type="link" danger class="region-act-btn" @click.stop>删除</Button>
             </Popconfirm>
@@ -73,7 +58,6 @@
         <div class="editing-tip">
           拖动顶点调整形状 · 点击线段添加顶点 · 右键顶点删除<br />
           <kbd>Delete</kbd> 选中删除 · <kbd>Ctrl+Z</kbd> 撤销 · <kbd>Esc</kbd> 退出<br />
-          <span class="camera-lock-hint">编辑期间相机已锁定</span>
         </div>
         <div class="vertex-count">共 {{ store.positions.length }} 个顶点</div>
       </template>

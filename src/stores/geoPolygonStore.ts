@@ -3,7 +3,7 @@
  * 多边形 CRUD、绘制协调、面积测量、GeoJSON 导出
  * ============================== */
 
-import { ref, computed, toRaw } from 'vue';
+import { ref, computed, toRaw, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import {
   BoundingSphere,
@@ -14,6 +14,7 @@ import {
   ClippingPolygonCollection,
   Color,
   HorizontalOrigin,
+  PointPrimitiveCollection,
   VerticalOrigin,
   sampleTerrain,
 } from 'cesium';
@@ -49,7 +50,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
 
   const polygons = ref<GeoPolygon[]>([]);
   const activePolygonId = ref<string | null>(null);
-  const positions = ref<Cartesian3[]>([]);
+  const positions = shallowRef<Cartesian3[]>([]);
   const isDrawing = ref(false);
   const isEditing = ref(false);
   const snappingEnabled = ref(true);
@@ -293,10 +294,16 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       editing.stopEdit();
       isEditing.value = false;
     }
-    polygons.value.forEach((p) => removePolygonEntity(p));
+    polygons.value.forEach((p) => {
+      removePolygonEntity(p);
+      removeSlopeGridEntities(p.id);
+    });
     polygons.value = [];
     activePolygonId.value = null;
     positions.value = [];
+    slopeResult.value = null;
+    slopeLoading.value = false;
+    showSlopeGrid.value = false;
     syncPolygonClipping();
   }
 
@@ -597,15 +604,17 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
    *  坡度网格可视化
    * ============================== */
 
+  // PointPrimitiveCollection 按多边形 ID 存储（批量渲染优化）
+  const slopeGridCollections = new Map<string, PointPrimitiveCollection>();
+
   function removeSlopeGridEntities(id: string) {
     const v = toRaw(viewer.value);
     if (!isValidViewer(v)) return;
-    const prefix = `geoPolygon_${id}_slope_`;
-    const toRemove: any[] = [];
-    v.entities.values.forEach((e: any) => {
-      if (e.id && (e.id as string).startsWith(prefix)) toRemove.push(e);
-    });
-    toRemove.forEach((e) => v.entities.remove(e));
+    const collection = slopeGridCollections.get(id);
+    if (collection) {
+      v.scene.primitives.remove(collection);
+      slopeGridCollections.delete(id);
+    }
   }
 
   function createSlopeGridEntities(id: string) {
@@ -620,17 +629,18 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       steep: Color.fromCssColorString('#FF4D4F'),
     };
 
-    slopeResult.value.gridPoints.forEach((pt, i) => {
+    // 使用 PointPrimitiveCollection 批量渲染所有坡度点（单次绘制调用）
+    const collection = v.scene.primitives.add(new PointPrimitiveCollection());
+    slopeGridCollections.set(id, collection);
+
+    slopeResult.value.gridPoints.forEach((pt) => {
       const pos = Cartesian3.fromRadians(pt.lon, pt.lat, pt.height);
-      v.entities.add({
-        id: `geoPolygon_${id}_slope_${i}`,
+      collection.add({
         position: pos,
-        point: {
-          pixelSize: 6,
-          color: colorMap[pt.category].withAlpha(0.85),
-          outlineColor: Color.WHITE.withAlpha(0.3),
-          outlineWidth: 1,
-        },
+        pixelSize: 6,
+        color: colorMap[pt.category].withAlpha(0.85),
+        outlineColor: Color.WHITE.withAlpha(0.3),
+        outlineWidth: 1,
       });
     });
   }
@@ -639,14 +649,10 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     showSlopeGrid.value = !showSlopeGrid.value;
     const polyId = activePolygonId.value;
     if (!polyId) return;
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return;
-    const prefix = `geoPolygon_${polyId}_slope_`;
-    v.entities.values.forEach((e: any) => {
-      if (e.id && (e.id as string).startsWith(prefix)) {
-        e.show = showSlopeGrid.value;
-      }
-    });
+    const collection = slopeGridCollections.get(polyId);
+    if (collection) {
+      collection.show = showSlopeGrid.value;
+    }
   }
 
   /* ==============================

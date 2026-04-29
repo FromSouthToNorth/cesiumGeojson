@@ -3,7 +3,7 @@
   支持多路径绘制、距离测量、高程剖面分析、GeoJSON 导出
 -->
 <template>
-  <SidePanel :visible="visible" title="地质路径" @update:visible="emit('update:visible', $event)">
+  <SidePanel :visible="visible" title="地质路径" :disableEscape="store.isDrawing || store.isEditing" @update:visible="emit('update:visible', $event)">
     <!-- ── 状态1：空闲 ── -->
     <template v-if="!store.isDrawing && !store.hasPaths">
       <div class="empty-state">

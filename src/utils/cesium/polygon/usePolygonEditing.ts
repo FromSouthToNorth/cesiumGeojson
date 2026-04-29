@@ -16,7 +16,7 @@
  *   Ctrl/Cmd+Shift+Z: 重做
  * ============================== */
 
-import { ref, toRaw } from 'vue';
+import { ref, toRaw, triggerRef } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
 import { Cartesian2, Cartesian3, Color, HeightReference, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 import type { Viewer } from 'cesium';
@@ -296,21 +296,27 @@ export function usePolygonEditing(options: {
           const next = (idx + 1) % positions.value.length;
           const mid = Cartesian3.midpoint(positions.value[idx], positions.value[next], new Cartesian3());
           positions.value.splice(next, 0, mid);
+          triggerRef(positions as any);
           onChange?.();
           drawEditGraphics();
         }
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
 
-    /* RIGHT_CLICK：右键删除顶点 */
+    /* RIGHT_CLICK：右键删除顶点 / 空白处退出编辑 */
     editingHandler.setInputAction((click: any) => {
       const v2 = getViewer();
       if (!v2) return;
       const picked = v2.scene.pick(click.position);
       if (picked?.id) {
         const idx = editPointEntities.indexOf(picked.id);
-        if (idx !== -1) removeVertexByIndex(idx);
+        if (idx !== -1) {
+          removeVertexByIndex(idx);
+          return;
+        }
       }
+      // 点击空白处 → 退出编辑
+      (onExitEdit ?? stopEdit)();
     }, ScreenSpaceEventType.RIGHT_CLICK);
   }
 
@@ -355,6 +361,7 @@ export function usePolygonEditing(options: {
       return;
     }
     positions.value.splice(idx, 1);
+    triggerRef(positions as any);
     onChange?.();
     drawEditGraphics();
   }

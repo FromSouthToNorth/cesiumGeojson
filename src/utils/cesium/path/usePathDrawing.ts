@@ -7,7 +7,7 @@
  *   右键 / Enter 完成，Backspace 撤销末点，Escape 取消
  * ============================== */
 
-import { ref, toRaw } from 'vue';
+import { ref, toRaw, triggerRef } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
 import {
   Cartesian3,
@@ -68,6 +68,8 @@ export function usePathDrawing(options: {
   let polylineEntity: any = null;
   let pointEntities: any[] = [];
   let previewLineEntity: any = null;
+  let _rafId: number | null = null;
+  let _pendingMousePos: import('cesium').Cartesian2 | null = null;
 
   /** 获取 viewer 实例，已判空和销毁检查 */
   function getViewer(): Viewer | null {
@@ -135,6 +137,7 @@ export function usePathDrawing(options: {
 
     clearDrawGraphics();
     positions.value.length = 0;
+    triggerRef(positions as any);
     previewPos = null;
     shiftPressed = false;
     isDrawing.value = true;
@@ -160,6 +163,7 @@ export function usePathDrawing(options: {
       if (cartesian) {
         const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
         positions.value.push(Cartesian3.clone(finalPos));
+        triggerRef(positions as any);
         snapping?.invalidateCache();
         previewPos = null;
         drawHelper();
@@ -176,7 +180,7 @@ export function usePathDrawing(options: {
         if (cartesian) {
           const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
           positions.value.push(Cartesian3.clone(finalPos));
-          snapping?.invalidateCache();
+          triggerRef(positions as any);
           previewPos = null;
           drawHelper();
           emitLiveUpdate();
@@ -186,20 +190,25 @@ export function usePathDrawing(options: {
       KeyboardEventModifier.SHIFT,
     );
 
-    // 鼠标移动：预览下一段
+    // 鼠标移动：预览下一段（使用 requestAnimationFrame 节流）
     handler.setInputAction((movement: any) => {
       if (positions.value.length === 0) return;
-      const v2 = getViewer();
-      if (!v2) return;
-      const cartesian = pickGlobe(v2, movement.endPosition);
-      if (cartesian) {
-        const finalPos = applySnapping(movement.endPosition, cartesian, shiftPressed);
-        previewPos = finalPos;
-        updatePreview(finalPos);
-        emitLiveUpdate();
-        // 光标反馈：吸附时显示 copy 指针（Shift 禁用时不显示）
-        v2.canvas.style.cursor = !shiftPressed && finalPos !== cartesian ? 'copy' : 'crosshair';
-      }
+      _pendingMousePos = movement.endPosition;
+      if (_rafId !== null) return;
+      _rafId = requestAnimationFrame(() => {
+        _rafId = null;
+        const v2 = getViewer();
+        if (!v2 || !_pendingMousePos) return;
+        const cartesian = pickGlobe(v2, _pendingMousePos);
+        if (cartesian) {
+          const finalPos = applySnapping(_pendingMousePos, cartesian, shiftPressed);
+          previewPos = finalPos;
+          updatePreview(finalPos);
+          emitLiveUpdate();
+          v2.canvas.style.cursor = !shiftPressed && finalPos !== cartesian ? 'copy' : 'crosshair';
+        }
+        _pendingMousePos = null;
+      });
     }, ScreenSpaceEventType.MOUSE_MOVE);
 
     // 右键：完成绘制
@@ -269,6 +278,7 @@ export function usePathDrawing(options: {
   function undoLastVertex() {
     if (positions.value.length === 0) return;
     positions.value.pop();
+    triggerRef(positions as any);
     snapping?.invalidateCache();
     previewPos = null;
     drawHelper();
@@ -369,6 +379,11 @@ export function usePathDrawing(options: {
   function cleanupDraw() {
     isDrawing.value = false;
     shiftPressed = false;
+    if (_rafId !== null) {
+      cancelAnimationFrame(_rafId);
+      _rafId = null;
+    }
+    _pendingMousePos = null;
     if (handler) {
       handler.destroy();
       handler = null;

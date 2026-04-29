@@ -6,28 +6,17 @@
   <div ref="cesiumContainer" class="cesium-container">
     <Toolbox />
     <CesiumNavigation />
-    <MapPopup
-      :visible="popupVisible"
-      :entity="popupTarget"
-      :screen-pos="popupScreenPos"
-      :style="popupStyle"
-      @close="closePopup()"
-      @update:style="onPopupStyleChange"
-    />
-    <MapContextMenu
-      :visible="contextMenuVisible"
-      :entity="contextMenuTarget"
-      :pos="contextMenuPos"
-      @close="closeContextMenu()"
-      @action="handleContextAction"
-    />
+    <MapPopup :visible="popupVisible" :entity="popupTarget" :screen-pos="popupScreenPos" :style="popupStyle"
+      @close="closePopup()" @update:style="onPopupStyleChange" />
+    <MapContextMenu :visible="contextMenuVisible" :entity="contextMenuTarget" :pos="contextMenuPos"
+      @close="closeContextMenu()" @action="handleContextAction" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, nextTick, toRaw } from 'vue';
 import type { Viewer } from 'cesium';
-import type { Cartesian3 } from 'cesium';
+import { Cartesian3, Cartographic, Math as CesiumMath } from 'cesium';
 import { message } from 'ant-design-vue';
 import { createViewer } from '@/utils/cesium/viewer';
 import { useCesiumStore } from '@/stores/cesiumStore';
@@ -114,47 +103,60 @@ function onPopupStyleChange(val: PopupVariantKey) {
 function handleContextAction(payload: ContextActionEvent) {
   const { action, entity } = payload;
   if (!entity) return;
-
+  const _entity = toRaw(entity);
   switch (action.id) {
     case 'flyTo':
-      if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().flyToPolygon(entity.polygon.id);
-      } else if (entity.type === 'geoPath') {
-        useGeoPathStore().flyToPath(entity.path.id);
-      } else if (entity.type === 'geojson') {
+      if (_entity.type === 'geoPolygon') {
+        useGeoPolygonStore().flyToPolygon(_entity.polygon.id);
+      } else if (_entity.type === 'geoPath') {
+        useGeoPathStore().flyToPath(_entity.path.id);
+      } else if (_entity.type === 'geojson') {
         const v = toRaw(viewer.value);
-        if (v && !v.isDestroyed()) v.flyTo(entity.entity).catch(() => {});
+        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => { });
+      } else if (_entity.type === 'point') {
+        const v = toRaw(viewer.value);
+        if (v && !v.isDestroyed()) {
+          const carto = Cartographic.fromCartesian(entity.position);
+          v.camera.flyTo({
+            destination: Cartesian3.fromDegrees(
+              CesiumMath.toDegrees(carto.longitude),
+              CesiumMath.toDegrees(carto.latitude),
+              (carto.height ?? 0) + 1000,
+            ),
+            duration: 1,
+          });
+        }
       }
       break;
 
     case 'edit':
-      if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().startEdit(entity.polygon.id);
-      } else if (entity.type === 'geoPath') {
-        useGeoPathStore().startEdit(entity.path.id);
-      } else if (entity.type === 'geojson') {
+      if (_entity.type === 'geoPolygon') {
+        useGeoPolygonStore().startEdit(_entity.polygon.id);
+      } else if (_entity.type === 'geoPath') {
+        useGeoPathStore().startEdit(_entity.path.id);
+      } else if (_entity.type === 'geojson') {
         message.info('GeoJSON 要素不支持直接编辑顶点');
       }
       break;
 
     case 'move':
-      if (entity.type === 'geoPolygon') {
+      if (_entity.type === 'geoPolygon') {
         const store = useGeoPolygonStore();
-        store.startMove(entity.polygon.id);
+        store.startMove(_entity.polygon.id);
         entityMove.startMove({
-          id: entity.polygon.id,
-          positions: entity.polygon.positions,
-          color: entity.polygon.color,
+          id: _entity.polygon.id,
+          positions: _entity.polygon.positions,
+          color: _entity.polygon.color,
           type: 'geoPolygon',
         });
         message.info('点击地图新位置以移动多边形，右键/Esc取消');
-      } else if (entity.type === 'geoPath') {
+      } else if (_entity.type === 'geoPath') {
         const store = useGeoPathStore();
-        store.startMove(entity.path.id);
+        store.startMove(_entity.path.id);
         entityMove.startMove({
-          id: entity.path.id,
-          positions: entity.path.positions,
-          color: entity.path.color,
+          id: _entity.path.id,
+          positions: _entity.path.positions,
+          color: _entity.path.color,
           type: 'geoPath',
         });
         message.info('点击地图新位置以移动路径，右键/Esc取消');
@@ -163,39 +165,39 @@ function handleContextAction(payload: ContextActionEvent) {
 
     case 'toggleVisibility':
       if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().toggleVisibility(entity.polygon.id);
-      } else if (entity.type === 'geoPath') {
-        useGeoPathStore().toggleVisibility(entity.path.id);
-      } else if (entity.type === 'geojson') {
-        useGeoJsonStore().toggleLayerVisibility(entity.layer.id);
+        useGeoPolygonStore().toggleVisibility(_entity.polygon.id);
+      } else if (_entity.type === 'geoPath') {
+        useGeoPathStore().toggleVisibility(_entity.path.id);
+      } else if (_entity.type === 'geojson') {
+        useGeoJsonStore().toggleLayerVisibility(_entity.layer.id);
       }
       break;
 
     case 'analyzeSlope':
-      if (entity.type === 'geoPolygon') {
+      if (_entity.type === 'geoPolygon') {
         const ps = useGeoPolygonStore();
-        ps.selectPolygon(entity.polygon.id);
-        ps.analyzeSlope(entity.polygon.id);
+        ps.selectPolygon(_entity.polygon.id);
+        ps.analyzeSlope(_entity.polygon.id);
       }
       break;
 
     case 'toggleClipping':
       if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().toggleClipping(entity.polygon.id);
+        useGeoPolygonStore().toggleClipping(_entity.polygon.id);
       }
       break;
 
     case 'playback':
-      if (entity.type === 'geoPath') {
+      if (_entity.type === 'geoPath') {
         const pStore = useGeoPathStore();
-        pStore.selectPath(entity.path.id);
-        pStore.startPlayback(entity.path);
+        pStore.selectPath(_entity.path.id);
+        pStore.startPlayback(_entity.path);
       }
       break;
 
     case 'viewProperties':
-      if (entity.type === 'geojson') {
-        const props = entity.feature.properties;
+      if (_entity.type === 'geojson') {
+        const props = _entity.feature.properties;
         const lines = Object.entries(props)
           .filter(([, v]) => v !== undefined && v !== null)
           .map(([k, v]) => `${k}: ${v}`)
@@ -205,15 +207,18 @@ function handleContextAction(payload: ContextActionEvent) {
       break;
 
     case 'delete':
-      if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().removePolygon(entity.polygon.id);
-        message.success(`已删除 ${entity.polygon.name}`);
-      } else if (entity.type === 'geoPath') {
-        useGeoPathStore().removePath(entity.path.id);
-        message.success(`已删除 ${entity.path.name}`);
-      } else if (entity.type === 'geojson') {
-        entity.entity.show = false;
-        message.success(`${entity.feature.name} 已隐藏`);
+      if (_entity.type === 'geoPolygon') {
+        useGeoPolygonStore().removePolygon(_entity.polygon.id);
+        message.success(`已删除 ${_entity.polygon.name}`);
+      } else if (_entity.type === 'geoPath') {
+        useGeoPathStore().removePath(_entity.path.id);
+        message.success(`已删除 ${_entity.path.name}`);
+      } else if (_entity.type === 'geojson') {
+        _entity.entity.show = false;
+        message.success(`${_entity.feature.name} 已隐藏`);
+      } else if (_entity.type === 'point') {
+        (_entity.entity as any)._removeSelf?.();
+        message.success('观测点已删除');
       }
       break;
   }

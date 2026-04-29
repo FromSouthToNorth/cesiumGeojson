@@ -1,4 +1,4 @@
-import { ref, computed, watch, toRaw } from 'vue';
+import { ref, computed, watch, toRaw, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import {
   Cartesian3,
@@ -54,7 +54,7 @@ export const useTerrainClipStore = defineStore('terrainClip', () => {
    * 重要：通过 `positions.value = region.positions` 与 regions[i].positions 共享引用，
    *       对 positions 的修改会直接反映到对应的 region 上。
    */
-  const positions = ref<Cartesian3[]>([]);
+  const positions = shallowRef<Cartesian3[]>([]);
   /** 是否有任何区域（UI 用） */
   const hasRegions = computed(() => regions.value.length > 0);
   /** 是否有有效（>= 3 顶点）区域（UI 用） */

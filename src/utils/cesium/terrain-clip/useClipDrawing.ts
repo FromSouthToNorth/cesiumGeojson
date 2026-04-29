@@ -1,4 +1,4 @@
-import { ref, toRaw } from 'vue';
+import { ref, toRaw, triggerRef } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
 import { Cartesian3, Color, HeightReference, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 import type { Viewer } from 'cesium';
@@ -84,6 +84,7 @@ export function useClipDrawing(options: {
       const cartesian = pickGlobe(v2, movement.position);
       if (cartesian) {
         positions.value.push(Cartesian3.clone(cartesian));
+        triggerRef(positions as any);
         drawHelper();
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
@@ -149,6 +150,7 @@ export function useClipDrawing(options: {
   function undoLastVertex() {
     if (positions.value.length === 0) return;
     positions.value.pop();
+    triggerRef(positions as any);
     drawHelper();
   }
 

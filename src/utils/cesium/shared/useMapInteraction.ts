@@ -23,13 +23,13 @@ import type { GeoJsonFeature, GeoJsonLayer } from '@/stores/geojsonStore';
 import type { GeoPolygon } from '@/types/geoPolygon';
 import type { GeoPath } from '@/types/geoPath';
 import type { PopupVariantKey } from '@/components/Cesium/shared/popupVariants';
-import { isValidViewer } from './common';
+import { isValidViewer, pickGlobe } from './common';
 
 /* ==============================
  *  类型定义
  * ============================== */
 
-export type PickedEntityType = 'geoPolygon' | 'geoPath' | 'geojson';
+export type PickedEntityType = 'geoPolygon' | 'geoPath' | 'geojson' | 'point';
 
 export interface PickedEntityGeoPolygon {
   type: 'geoPolygon';
@@ -53,11 +53,13 @@ export interface PickedEntityGeoJson {
   position: Cartesian3;
 }
 
-export type PickedEntity =
-  | PickedEntityGeoPolygon
-  | PickedEntityGeoPath
-  | PickedEntityGeoJson
-  | null;
+export interface PickedEntityPoint {
+  type: 'point';
+  entity: Entity;
+  position: Cartesian3;
+}
+
+export type PickedEntity = PickedEntityGeoPolygon | PickedEntityGeoPath | PickedEntityGeoJson | PickedEntityPoint | null;
 
 export interface ContextMenuAction {
   id: string;
@@ -219,7 +221,7 @@ function pickEntity(v: Viewer, screenPos: { x: number; y: number }): PickedEntit
     const geojsonStore = useGeoJsonStore();
     for (const layer of geojsonStore.layers) {
       for (const feature of layer.features) {
-        if (feature.entity === entity) {
+        if (feature.entity.id === entity.id) {
           const pos = getEntityPosition(entity) ?? new Cartesian3(0, 0, 0);
           return { type: 'geojson', entity, feature, layer, position: pos };
         }
@@ -229,6 +231,13 @@ function pickEntity(v: Viewer, screenPos: { x: number; y: number }): PickedEntit
     // ignore
   }
 
+  // 4. 观测点
+  const pointMatch = entityId.match(/^point_(\d+)$/);
+  if (pointMatch) {
+    const pos = getEntityPosition(entity) ?? new Cartesian3(0, 0, 0);
+    return { type: 'point', entity, position: pos };
+  }
+
   return null;
 }
 
@@ -236,9 +245,7 @@ function pickEntity(v: Viewer, screenPos: { x: number; y: number }): PickedEntit
  *  Composable
  * ============================== */
 
-export function useMapInteraction(options: {
-  viewer: ComputedRef<Viewer | null>;
-}): MapInteractionState {
+export function useMapInteraction(options: { viewer: ComputedRef<Viewer | null> }): MapInteractionState {
   const { viewer } = options;
 
   /* ─── 状态 ─── */
@@ -260,20 +267,27 @@ export function useMapInteraction(options: {
 
   /* ─── 屏幕位置更新 ─── */
 
+  let _lastPopupPos: { x: number; y: number } | null = null;
+
   function updatePopupScreenPos() {
     if (!popupVisible.value || !trackedPosition) {
-      popupScreenPos.value = null;
+      if (popupScreenPos.value !== null) popupScreenPos.value = null;
       return;
     }
     const v = toRaw(viewer.value);
     if (!v || v.isDestroyed()) {
-      popupScreenPos.value = null;
+      if (popupScreenPos.value !== null) popupScreenPos.value = null;
       return;
     }
     const pos = SceneTransforms.worldToWindowCoordinates(v.scene, trackedPosition);
     if (pos) {
-      popupScreenPos.value = { x: pos.x, y: pos.y };
-    } else {
+      const newPos = { x: pos.x, y: pos.y };
+      // 脏检查：仅当位置发生变化时才触发 Vue 更新
+      if (!_lastPopupPos || _lastPopupPos.x !== newPos.x || _lastPopupPos.y !== newPos.y) {
+        _lastPopupPos = newPos;
+        popupScreenPos.value = newPos;
+      }
+    } else if (popupScreenPos.value !== null) {
       popupScreenPos.value = null;
     }
   }
@@ -292,6 +306,21 @@ export function useMapInteraction(options: {
     contextMenuTarget.value = null;
   }
 
+  /* ─── 辅助：获取点击处表面位置 ─── */
+
+  function getClickPosition(v: Viewer, screenPos: { x: number; y: number }): Cartesian3 | null {
+    const cartesian2 = new Cartesian2(screenPos.x, screenPos.y);
+    // 1. 深度缓冲拾取（实体表面最精确）
+    try {
+      const pos = v.scene.pickPosition(cartesian2);
+      if (pos) return pos;
+    } catch {
+      // ignore
+    }
+    // 2. 地形射线 → 椭球面交点
+    return pickGlobe(v, cartesian2);
+  }
+
   /* ─── 左键 ─── */
 
   function onLeftClick(movement: { position: { x: number; y: number } }) {
@@ -305,7 +334,8 @@ export function useMapInteraction(options: {
     const picked = pickEntity(v, movement.position);
     if (picked) {
       popupTarget.value = picked;
-      trackedPosition = picked.position;
+      // 优先使用实际点击位置，回退到实体中心
+      trackedPosition = getClickPosition(v, movement.position) ?? picked.position;
       popupVisible.value = true;
       updatePopupScreenPos();
     } else {
@@ -315,7 +345,25 @@ export function useMapInteraction(options: {
 
   /* ─── 右键 ─── */
 
-  function onRightClick(movement: { position: { x: number; y: number } }) {
+  let rightMouseDownPos: { x: number; y: number } | null = null;
+
+  function onRightDown(movement: { position: { x: number; y: number } }) {
+    rightMouseDownPos = movement.position;
+  }
+
+  function onContextMenu(e: MouseEvent) {
+    e.preventDefault();
+
+    // 过滤拖拽（用户右击拖拽是缩放操作，不弹出菜单）
+    if (rightMouseDownPos) {
+      // rightMouseDownPos 为 canvas 坐标, e.clientX/Y 为视口坐标
+      // cesiumContainer 占满视口时两者等价，5px 阈值足够容忍微小偏差
+      const dx = e.clientX - rightMouseDownPos.x;
+      const dy = e.clientY - rightMouseDownPos.y;
+      rightMouseDownPos = null;
+      if (dx * dx + dy * dy > 25) return; // >5px 视为拖拽
+    }
+
     if (isAnyStoreBusy()) return;
 
     const v = toRaw(viewer.value);
@@ -323,10 +371,16 @@ export function useMapInteraction(options: {
 
     closePopup();
 
-    const picked = pickEntity(v, movement.position);
+    const rect = v.scene.canvas.getBoundingClientRect();
+    const canvasPos = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+
+    const picked = pickEntity(v, canvasPos);
     if (picked) {
       contextMenuTarget.value = picked;
-      contextMenuPos.value = { x: movement.position.x, y: movement.position.y };
+      contextMenuPos.value = { x: e.clientX, y: e.clientY };
       contextMenuVisible.value = true;
     } else {
       closeContextMenu();
@@ -339,11 +393,11 @@ export function useMapInteraction(options: {
     const v = toRaw(viewer.value);
     if (!isValidViewer(v)) return;
 
-    v.scene.canvas.addEventListener('contextmenu', (e: Event) => e.preventDefault());
+    v.scene.canvas.addEventListener('contextmenu', onContextMenu);
 
     handler = new ScreenSpaceEventHandler(v.scene.canvas);
     handler.setInputAction(onLeftClick, ScreenSpaceEventType.LEFT_CLICK);
-    handler.setInputAction(onRightClick, ScreenSpaceEventType.RIGHT_CLICK);
+    handler.setInputAction(onRightDown, ScreenSpaceEventType.RIGHT_DOWN);
 
     const postRenderListener = () => updatePopupScreenPos();
     v.scene.postRender.addEventListener(postRenderListener);
