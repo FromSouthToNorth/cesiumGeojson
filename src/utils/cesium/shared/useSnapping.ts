@@ -23,7 +23,7 @@ import { isValidViewer } from './common';
 
 export interface SnapSource {
   position: Cartesian3;
-  sourceType: 'path' | 'polygon';
+  sourceType: 'path' | 'polygon' | 'point';
   /** 是否为边中点（非原始顶点） */
   isMidpoint?: boolean;
 }
@@ -31,7 +31,7 @@ export interface SnapSource {
 export interface SnapTarget {
   position: Cartesian3;
   sourceVertex: Cartesian3;
-  sourceType: 'path' | 'polygon';
+  sourceType: 'path' | 'polygon' | 'point';
   /** 是否吸附到边中点 */
   isMidpoint: boolean;
   /** 屏幕像素距离 */

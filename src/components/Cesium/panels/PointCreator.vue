@@ -12,7 +12,7 @@
         <PushpinOutlined /> {{ isMapDrawing ? '取消选点' : '地图选点' }}
       </Button>
       <div v-if="isMapDrawing" class="map-draw-hint">
-        <AimOutlined /> 点击地图放置观测点，按 <kbd>Esc</kbd> 取消
+        <AimOutlined /> 点击地图放置观测点，<kbd>Esc</kbd> 取消，<kbd>Shift</kbd> 临时禁用吸附
       </div>
     </div>
 
@@ -70,13 +70,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, toRaw, h, onUnmounted } from 'vue';
+import { ref, reactive, toRaw, h, computed, watch, onUnmounted } from 'vue';
 import { Button, Form, InputNumber, Checkbox, Popconfirm, Dropdown, message } from 'ant-design-vue';
 import { EnvironmentOutlined, AimOutlined, CloseOutlined, ZoomInOutlined, MoreOutlined, PushpinOutlined } from '@ant-design/icons-vue';
 import { useCesiumStore } from '@/stores/cesiumStore';
 import { Cartesian3, Cartographic, sampleTerrain, HeadingPitchRange, Math as CesiumMath, Matrix4, Color, ScreenSpaceEventHandler, ScreenSpaceEventType, HeightReference } from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 import { pickGlobe } from '@/utils/cesium/shared/common';
+import { useSnapping } from '@/utils/cesium/shared/useSnapping';
+import type { SnapSource } from '@/utils/cesium/shared/useSnapping';
+import { useGeoPathStore } from '@/stores/geoPathStore';
+import { useGeoPolygonStore } from '@/stores/geoPolygonStore';
 import { SidePanel } from '.';
 
 defineOptions({ name: 'PointCreator' });
@@ -88,11 +92,12 @@ interface PointRecord {
   entity: Entity;
   lng: number;
   lat: number;
+  position: Cartesian3;
 }
 
 /* ───────── props & emits ───────── */
 
-defineProps<{ visible: boolean }>();
+const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 
 /* ───────── 状态 ───────── */
@@ -107,7 +112,50 @@ const points = ref<PointRecord[]>([]); // 已创建的所有点
 const isMapDrawing = ref(false);
 let mapHandler: ScreenSpaceEventHandler | null = null;
 let escapeKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+let shiftPressed = false;
+let shiftDownHandler: ((e: KeyboardEvent) => void) | null = null;
+let shiftUpHandler: ((e: KeyboardEvent) => void) | null = null;
 let nextId = 1;
+
+const viewerRef = computed(() => cesiumStore.viewer);
+
+const snapping = useSnapping({
+  viewer: viewerRef,
+  collectTargets: () => {
+    const targets: SnapSource[] = [];
+    try {
+      const pathStore = useGeoPathStore();
+      pathStore.paths.forEach((p) => {
+        p.positions.forEach((pt) => targets.push({ position: pt, sourceType: 'path' }));
+        for (let i = 0; i < p.positions.length - 1; i++) {
+          targets.push({
+            position: Cartesian3.midpoint(p.positions[i], p.positions[i + 1], new Cartesian3()),
+            sourceType: 'path',
+            isMidpoint: true,
+          });
+        }
+      });
+    } catch { /* store may not be initialized */ }
+    try {
+      const polyStore = useGeoPolygonStore();
+      polyStore.polygons.forEach((p) => {
+        p.positions.forEach((pt) => targets.push({ position: pt, sourceType: 'polygon' }));
+        const n = p.positions.length;
+        for (let i = 0; i < n; i++) {
+          const next = (i + 1) % n;
+          targets.push({
+            position: Cartesian3.midpoint(p.positions[i], p.positions[next], new Cartesian3()),
+            sourceType: 'polygon',
+            isMidpoint: true,
+          });
+        }
+      });
+    } catch { /* store may not be initialized */ }
+    // 自己的点作为吸附目标
+    points.value.forEach((p) => targets.push({ position: p.position, sourceType: 'point' }));
+    return targets;
+  },
+});
 
 const form = reactive({
   lng: null as number | null,
@@ -311,7 +359,8 @@ async function handleCreate() {
     });
 
     const pointId = nextId++;
-    points.value.push({ id: pointId, entity, lng, lat });
+    points.value.push({ id: pointId, entity, lng, lat, position });
+    snapping.invalidateCache();
 
     stopRotation();
 
@@ -356,18 +405,54 @@ function startMapDrawing() {
   isMapDrawing.value = true;
   v.canvas.style.cursor = 'crosshair';
 
+  // 吸附设置
+  snapping.setup();
+
+  // Shift 键状态跟踪（临时禁用吸附）
+  shiftPressed = false;
+  shiftDownHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Shift') shiftPressed = true;
+  };
+  shiftUpHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Shift') shiftPressed = false;
+  };
+  window.addEventListener('keydown', shiftDownHandler);
+  window.addEventListener('keyup', shiftUpHandler);
+
   mapHandler = new ScreenSpaceEventHandler(v.canvas);
   mapHandler.setInputAction((movement: any) => {
     const v2 = toRaw(cesiumStore.viewer);
     if (!v2 || v2.isDestroyed()) return;
     const cartesian = pickGlobe(v2, movement.position);
     if (cartesian) {
-      createPointFromPosition(cartesian);
+      const snapResult = snapping.findSnapTarget(movement.position, cartesian, undefined, shiftPressed);
+      const finalPos = snapResult ? snapResult.position : cartesian;
+      createPointFromPosition(finalPos);
       if (!keepOpen.value) {
         stopMapDrawing();
       }
     }
   }, ScreenSpaceEventType.LEFT_CLICK);
+
+  // 鼠标移动：吸附预览（使用 requestAnimationFrame 节流）
+  let _rafId: number | null = null;
+  let _pendingMousePos: any = null;
+  mapHandler.setInputAction((movement: any) => {
+    if (!isMapDrawing.value) return;
+    _pendingMousePos = movement.endPosition;
+    if (_rafId !== null) return;
+    _rafId = requestAnimationFrame(() => {
+      _rafId = null;
+      const v2 = toRaw(cesiumStore.viewer);
+      if (!v2 || v2.isDestroyed() || !_pendingMousePos) return;
+      const cartesian = pickGlobe(v2, _pendingMousePos);
+      if (cartesian) {
+        const snapResult = snapping.findSnapTarget(_pendingMousePos, cartesian, undefined, shiftPressed);
+        v2.canvas.style.cursor = snapResult ? 'copy' : 'crosshair';
+      }
+      _pendingMousePos = null;
+    });
+  }, ScreenSpaceEventType.MOUSE_MOVE);
 
   // 右键结束绘制
   mapHandler.setInputAction(() => {
@@ -397,6 +482,15 @@ function stopMapDrawing() {
     window.removeEventListener('keydown', escapeKeyHandler, { capture: true });
     escapeKeyHandler = null;
   }
+  if (shiftDownHandler) {
+    window.removeEventListener('keydown', shiftDownHandler);
+    shiftDownHandler = null;
+  }
+  if (shiftUpHandler) {
+    window.removeEventListener('keyup', shiftUpHandler);
+    shiftUpHandler = null;
+  }
+  snapping.teardown();
   const v = toRaw(cesiumStore.viewer);
   if (v && !v.isDestroyed()) {
     v.canvas.style.cursor = 'default';
@@ -461,7 +555,8 @@ async function createPointFromPosition(cartesian: Cartesian3) {
     };
 
     nextId++;
-    points.value.push({ id: pointId, entity, lng, lat });
+    points.value.push({ id: pointId, entity, lng, lat, position });
+    snapping.invalidateCache();
 
     stopRotation();
     message.success(`点位已创建 (海拔: ${altDisplay.toFixed(1)} m)`);
@@ -535,10 +630,19 @@ function teardownGlobalUndo() {
 
 setupGlobalUndo();
 
+// 面板关闭时停止地图绘制，防止残留事件处理器
+watch(
+  () => props.visible,
+  (visible) => {
+    if (!visible) stopMapDrawing();
+  },
+);
+
 onUnmounted(() => {
   teardownGlobalUndo();
   stopRotation();
   stopMapDrawing();
+  snapping.destroy();
 });
 </script>
 
