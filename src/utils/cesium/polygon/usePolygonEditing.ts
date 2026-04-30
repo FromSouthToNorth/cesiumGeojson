@@ -55,6 +55,10 @@ export function usePolygonEditing(options: {
   let justDragged = false;
   let lastMousePos: Cartesian2 | null = null;
 
+  // RAF 节流（拖拽状态）
+  let _rafId: number | null = null;
+  let _pendingMovement: any = null;
+
   function getViewer(): Viewer | null {
     const v = toRaw(viewer.value);
     return isValidViewer(v) ? v : null;
@@ -117,6 +121,12 @@ export function usePolygonEditing(options: {
     snapping?.teardown();
     kb.teardown();
     dragState = null;
+    justDragged = false;
+    if (_rafId !== null) {
+      cancelAnimationFrame(_rafId);
+      _rafId = null;
+    }
+    _pendingMovement = null;
   }
 
   /* ==============================
@@ -266,18 +276,27 @@ export function usePolygonEditing(options: {
       if (!v2) return;
 
       if (dragState) {
-        v2.scene.screenSpaceCameraController.enableInputs = false;
-        const cartesian = pickGlobe(v2, movement.endPosition);
-        if (cartesian) {
-          let finalPos = cartesian;
-          if (snapping) {
-            const exclude = positions.value.filter((_, i) => i !== dragState!.index);
-            const target = snapping.findSnapTarget(movement.endPosition, cartesian, exclude);
-            if (target) finalPos = target.position;
+        _pendingMovement = movement;
+        if (_rafId !== null) return;
+        _rafId = requestAnimationFrame(() => {
+          _rafId = null;
+          if (!_pendingMovement || !dragState) return;
+          const mv = _pendingMovement;
+          _pendingMovement = null;
+
+          v2.scene.screenSpaceCameraController.enableInputs = false;
+          const cartesian = pickGlobe(v2, mv.endPosition);
+          if (cartesian) {
+            let finalPos = cartesian;
+            if (snapping) {
+              const exclude = positions.value.filter((_, i) => i !== dragState!.index);
+              const target = snapping.findSnapTarget(mv.endPosition, cartesian, exclude);
+              if (target) finalPos = target.position;
+            }
+            positions.value[dragState.index] = finalPos;
+            updateEditVertex(dragState.index, finalPos);
           }
-          positions.value[dragState.index] = finalPos;
-          updateEditVertex(dragState.index, finalPos);
-        }
+        });
       } else {
         v2.scene.screenSpaceCameraController.enableInputs = true;
         updateCursor(v2, movement.endPosition);

@@ -1,49 +1,29 @@
 /* ==============================
  * Snapping Composable
- * 绘制时吸附到已有顶点及边中点
+ * 绘制/编辑时吸附到已有顶点及边中点
  *
- * 核心优化：
- *   1. 世界距离粗筛（300m）+ 屏幕距离精筛（12px），大幅减少 cartesianToCanvasCoordinates 开销
- *   2. 边中点吸附，通过 collectTargets 预生成中点源
- *   3. 吸附辅助线（虚线），增强用户对吸附关系的感知
- *   4. Shift 键临时禁用吸附
- *   5. excludeSet 使用坐标值比较，修复引用失效问题
- *   6. 目标标记只在 setup 时创建一次，invalidateCache 不再刷新标记
+ * 架构：
+ *   - 纯算法层委托给 SnapEngine（空间索引 + 缓存 + 早期退出）
+ *   - 本层仅保留 Vue 响应式状态 + Cesium 可视化（指示器、辅助线）
  * ============================== */
 
 import { ref, toRaw } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
 import {
-  Cartesian3,
   Cartesian2,
+  Cartesian3,
   Color,
   HeightReference,
-  PolylineDashMaterialProperty,
   PointPrimitiveCollection,
+  PolylineDashMaterialProperty,
 } from 'cesium';
 import type { Viewer } from 'cesium';
 import { isValidViewer } from './common';
+import { SnapEngine } from './snapEngine';
+import type { SnapSource, SnapTarget } from './snapEngine';
 
-/* ==============================
- *  类型定义
- * ============================== */
-
-export interface SnapSource {
-  position: Cartesian3;
-  sourceType: 'path' | 'polygon' | 'point';
-  /** 是否为边中点（非原始顶点） */
-  isMidpoint?: boolean;
-}
-
-export interface SnapTarget {
-  position: Cartesian3;
-  sourceVertex: Cartesian3;
-  sourceType: 'path' | 'polygon' | 'point';
-  /** 是否吸附到边中点 */
-  isMidpoint: boolean;
-  /** 屏幕像素距离 */
-  distance: number;
-}
+// 向后兼容：从 snapEngine 重新导出类型
+export type { SnapSource, SnapTarget } from './snapEngine';
 
 export interface UseSnappingOptions {
   /** Cesium Viewer 的 computed ref */
@@ -54,17 +34,10 @@ export interface UseSnappingOptions {
   pixelThreshold?: number;
   /** 世界距离粗筛阈值（默认 300m） */
   worldThreshold?: number;
-  /** 收集所有潜在吸附目标，每次 setup() 时调用 */
+  /** 收集所有潜在吸附目标，每次 setup() / invalidateCache() 时调用 */
   collectTargets: () => SnapSource[];
-}
-
-/* ==============================
- *  工具函数
- * ============================== */
-
-/** 判断两个 Cartesian3 是否近似相等（解决 clone 后引用不等的问题） */
-function cartesianApproxEquals(a: Cartesian3, b: Cartesian3, epsilon = 0.001): boolean {
-  return Math.abs(a.x - b.x) < epsilon && Math.abs(a.y - b.y) < epsilon && Math.abs(a.z - b.z) < epsilon;
+  /** 在显示目标标记时排除该 layerId（用于编辑/绘制模式下不显示当前图层自身的标记） */
+  excludeLayerId?: Ref<string | null>;
 }
 
 /* ==============================
@@ -72,14 +45,13 @@ function cartesianApproxEquals(a: Cartesian3, b: Cartesian3, epsilon = 0.001): b
  * ============================== */
 
 export function useSnapping(options: UseSnappingOptions) {
-  const { viewer, enabled, pixelThreshold = 12, worldThreshold = 300, collectTargets } = options;
+  const { viewer, enabled, pixelThreshold = 12, worldThreshold = 300, collectTargets, excludeLayerId } = options;
 
   const isSnapping = ref(false);
   const currentTarget = ref<SnapTarget | null>(null);
 
-  // 缓存的目标列表
-  let cachedTargets: SnapSource[] = [];
-  let cacheValid = false;
+  // 纯算法引擎
+  const engine = new SnapEngine({ pixelThreshold, worldThreshold });
 
   // 指示器 entity（常驻，通过 show 切换）
   let indicatorEntity: any = null;
@@ -87,23 +59,13 @@ export function useSnapping(options: UseSnappingOptions) {
   let midpointIndicatorEntity: any = null;
   // 吸附辅助线 entity（虚线）
   let snapLineEntity: any = null;
-
   // 目标顶点标记 PointPrimitiveCollection（批量渲染优化）
   let snapTargetCollection: PointPrimitiveCollection | null = null;
-
-  // 复用 scratch 变量
-  const _scratchToVertex = new Cartesian3();
 
   /** 获取 viewer 实例 */
   function getViewer(): Viewer | null {
     const v = toRaw(viewer.value);
     return isValidViewer(v) ? v : null;
-  }
-
-  /** 重建目标缓存 */
-  function rebuildCache() {
-    cachedTargets = collectTargets();
-    cacheValid = true;
   }
 
   /* ==============================
@@ -207,9 +169,15 @@ export function useSnapping(options: UseSnappingOptions) {
     if (!v) return;
     hideSnapTargets();
 
+    const targets = engine.getTargets();
+    const excluded = excludeLayerId?.value;
+    // 过滤掉当前正在编辑/绘制的图层目标，避免与编辑模式自身标记重叠
+    const filtered = excluded
+      ? targets.filter((t) => t.layerId !== excluded)
+      : targets;
     // 限制显示数量，避免过多标记拖慢渲染
     const maxMarkers = 200;
-    const displayTargets = cachedTargets.slice(0, maxMarkers);
+    const displayTargets = filtered.slice(0, maxMarkers);
     if (displayTargets.length === 0) return;
 
     // 使用 PointPrimitiveCollection 批量渲染（单次绘制调用替代 200 个独立 Entity）
@@ -243,24 +211,9 @@ export function useSnapping(options: UseSnappingOptions) {
   }
 
   /* ==============================
-   *  核心查找逻辑
+   *  核心查找逻辑（委托给 SnapEngine）
    * ============================== */
 
-  /**
-   * 查找屏幕坐标附近是否存在可吸附的顶点或边中点
-   *
-   * 优化策略：
-   *   1. 先用世界距离粗筛（默认 300m），快速排除远端目标
-   *   2. 对剩余目标做屏幕投影，用像素距离精筛
-   *   3. 背面剔除 + 排除自身顶点
-   *
-   * @param screenPos - 屏幕坐标（鼠标位置）
-   * @param worldPos - 地形拾取的世界坐标（用于粗筛）
-   * @param excludePositions - 需要排除的顶点（当前绘制图形的顶点），
-   *                           索引 0（首点）会被保留以支持闭合吸附
-   * @param disableSnap - 临时禁用（如 Shift 键按下）
-   * @returns 找到的吸附目标，或 null
-   */
   function findSnapTarget(
     screenPos: Cartesian2,
     worldPos: Cartesian3,
@@ -285,69 +238,7 @@ export function useSnapping(options: UseSnappingOptions) {
       return null;
     }
 
-    if (!cacheValid) {
-      rebuildCache();
-    }
-
-    if (cachedTargets.length === 0) {
-      isSnapping.value = false;
-      currentTarget.value = null;
-      hideIndicators();
-      hideSnapLine();
-      return null;
-    }
-
-    // 构建排除集合（保留首顶点索引 0，用于闭合吸附）
-    const excludeList = excludePositions && excludePositions.length > 0 ? excludePositions.slice(1) : [];
-
-    const thresholdSq = pixelThreshold * pixelThreshold;
-    const camera = v.camera;
-    const cameraPos = camera.positionWC;
-    const cameraDir = camera.directionWC;
-
-    let bestTarget: SnapTarget | null = null;
-    let bestDistSq = thresholdSq;
-
-    for (let i = 0; i < cachedTargets.length; i++) {
-      const src = cachedTargets[i];
-
-      // 排除自身顶点（坐标值比较，修复引用失效问题）
-      let isExcluded = false;
-      for (let j = 0; j < excludeList.length; j++) {
-        if (cartesianApproxEquals(src.position, excludeList[j])) {
-          isExcluded = true;
-          break;
-        }
-      }
-      if (isExcluded) continue;
-
-      // 粗筛：世界距离（避免远距离目标做昂贵的屏幕投影）
-      const worldDist = Cartesian3.distance(worldPos, src.position);
-      if (worldDist > worldThreshold) continue;
-
-      // 背面剔除：顶点在相机后方则跳过
-      Cartesian3.subtract(src.position, cameraPos, _scratchToVertex);
-      if (Cartesian3.dot(_scratchToVertex, cameraDir) < 0) continue;
-
-      // 精筛：屏幕坐标距离
-      const screenCoord = v.scene.cartesianToCanvasCoordinates(src.position);
-      if (!screenCoord) continue;
-
-      const dx = screenCoord.x - screenPos.x;
-      const dy = screenCoord.y - screenPos.y;
-      const distSq = dx * dx + dy * dy;
-
-      if (distSq < bestDistSq) {
-        bestDistSq = distSq;
-        bestTarget = {
-          position: src.position,
-          sourceVertex: src.position,
-          sourceType: src.sourceType,
-          isMidpoint: src.isMidpoint ?? false,
-          distance: Math.sqrt(distSq),
-        };
-      }
-    }
+    const bestTarget = engine.findSnapTarget(v, screenPos, worldPos, excludePositions);
 
     if (bestTarget) {
       isSnapping.value = true;
@@ -373,14 +264,12 @@ export function useSnapping(options: UseSnappingOptions) {
    * ============================== */
 
   /**
-   * 开始绘制时调用：
+   * 开始绘制/编辑时调用：
    *   1. 重建目标缓存
    *   2. 创建/保持指示器 entity
-   *   3. 显示目标标记点
    */
   function setup() {
-    cacheValid = false;
-    rebuildCache();
+    engine.setTargets(collectTargets());
 
     const v = getViewer();
     if (v) {
@@ -393,10 +282,9 @@ export function useSnapping(options: UseSnappingOptions) {
   }
 
   /**
-   * 结束绘制时调用：
+   * 结束绘制/编辑时调用：
    *   1. 清除指示器和辅助线
-   *   2. 清除目标标记点
-   *   3. 重置状态和缓存
+   *   2. 重置状态
    */
   function teardown() {
     hideIndicators();
@@ -404,16 +292,11 @@ export function useSnapping(options: UseSnappingOptions) {
     hideSnapTargets();
     isSnapping.value = false;
     currentTarget.value = null;
-    cachedTargets = [];
-    cacheValid = false;
   }
 
   /** 强制刷新缓存（顶点添加/撤销后调用） */
   function invalidateCache() {
-    rebuildCache();
-    // 标记实体不再刷新，避免频繁 add/remove entity 的开销
-    // 若需要刷新标记，可取消下行注释：
-    // showSnapTargets();
+    engine.setTargets(collectTargets());
   }
 
   /** 清理所有 entity（viewer 销毁前调用） */

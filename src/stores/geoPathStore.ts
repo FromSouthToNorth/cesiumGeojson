@@ -121,17 +121,18 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     viewer,
     enabled: snappingEnabled,
     pixelThreshold: 12,
+    excludeLayerId: activePathId,
     collectTargets: () => {
       const targets: SnapSource[] = [];
       // 收集所有已有路径的顶点和边中点
       paths.value.forEach((p) => {
         const pos = p.positions;
         // 顶点
-        pos.forEach((pt) => targets.push({ position: pt, sourceType: 'path' }));
+        pos.forEach((pt) => targets.push({ position: pt, sourceType: 'path', layerId: p.id }));
         // 边中点（开放路径：n-1 条边）
         for (let i = 0; i < pos.length - 1; i++) {
           const mid = Cartesian3.midpoint(pos[i], pos[i + 1], new Cartesian3());
-          targets.push({ position: mid, sourceType: 'path', isMidpoint: true });
+          targets.push({ position: mid, sourceType: 'path', layerId: p.id, isMidpoint: true });
         }
       });
       // 跨 store 收集多边形顶点和边中点
@@ -141,12 +142,12 @@ export const useGeoPathStore = defineStore('geoPath', () => {
           const pos = p.positions;
           const n = pos.length;
           // 顶点
-          pos.forEach((pt) => targets.push({ position: pt, sourceType: 'polygon' }));
+          pos.forEach((pt) => targets.push({ position: pt, sourceType: 'polygon', layerId: p.id }));
           // 边中点（闭合多边形：n 条边）
           for (let i = 0; i < n; i++) {
             const next = (i + 1) % n;
             const mid = Cartesian3.midpoint(pos[i], pos[next], new Cartesian3());
-            targets.push({ position: mid, sourceType: 'polygon', isMidpoint: true });
+            targets.push({ position: mid, sourceType: 'polygon', layerId: p.id, isMidpoint: true });
           }
         });
       } catch {

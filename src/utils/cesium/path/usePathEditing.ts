@@ -42,7 +42,13 @@ export function usePathEditing(options: {
   let editMidpointEntities: any[] = [];
   let dragState: { index: number } | null = null;
   let dragStartPos: Cartesian3 | null = null;
+  /** 拖拽刚结束时为 true，阻止 LEFT_CLICK 误触中点添加 */
+  let justDragged = false;
   let lastMousePos: Cartesian2 | null = null;
+
+  // RAF 节流（拖拽状态）
+  let _rafId: number | null = null;
+  let _pendingMovement: any = null;
 
   function getViewer(): Viewer | null {
     const v = toRaw(viewer.value);
@@ -106,6 +112,12 @@ export function usePathEditing(options: {
     snapping?.teardown();
     kb.teardown();
     dragState = null;
+    justDragged = false;
+    if (_rafId !== null) {
+      cancelAnimationFrame(_rafId);
+      _rafId = null;
+    }
+    _pendingMovement = null;
   }
 
   /* ==============================
@@ -233,23 +245,33 @@ export function usePathEditing(options: {
 
     /* MOUSE_MOVE：拖拽 + 光标反馈 */
     editingHandler.setInputAction((movement: any) => {
+      justDragged = false;
       lastMousePos = movement.endPosition;
       const v2 = getViewer();
       if (!v2) return;
 
       if (dragState) {
-        v2.scene.screenSpaceCameraController.enableInputs = false;
-        const cartesian = pickGlobe(v2, movement.endPosition);
-        if (cartesian) {
-          let finalPos = cartesian;
-          if (snapping) {
-            const exclude = positions.value.filter((_, i) => i !== dragState!.index);
-            const target = snapping.findSnapTarget(movement.endPosition, cartesian, exclude);
-            if (target) finalPos = target.position;
+        _pendingMovement = movement;
+        if (_rafId !== null) return;
+        _rafId = requestAnimationFrame(() => {
+          _rafId = null;
+          if (!_pendingMovement || !dragState) return;
+          const mv = _pendingMovement;
+          _pendingMovement = null;
+
+          v2.scene.screenSpaceCameraController.enableInputs = false;
+          const cartesian = pickGlobe(v2, mv.endPosition);
+          if (cartesian) {
+            let finalPos = cartesian;
+            if (snapping) {
+              const exclude = positions.value.filter((_, i) => i !== dragState!.index);
+              const target = snapping.findSnapTarget(mv.endPosition, cartesian, exclude);
+              if (target) finalPos = target.position;
+            }
+            positions.value[dragState.index] = finalPos;
+            updateEditVertex(dragState.index, finalPos);
           }
-          positions.value[dragState.index] = finalPos;
-          updateEditVertex(dragState.index, finalPos);
-        }
+        });
       } else {
         v2.scene.screenSpaceCameraController.enableInputs = true;
         updateCursor(v2, movement.endPosition);
@@ -261,6 +283,7 @@ export function usePathEditing(options: {
       if (dragState) {
         const changedIndex = dragState.index;
         dragState = null;
+        justDragged = true; // 标记拖拽刚结束，阻止接下来的 LEFT_CLICK
         const v2 = getViewer();
         if (v2) v2.canvas.style.cursor = 'default';
         if (dragStartPos) {
@@ -276,7 +299,7 @@ export function usePathEditing(options: {
 
     /* LEFT_CLICK：点击中点添加顶点 */
     editingHandler.setInputAction((click: any) => {
-      if (dragState) return;
+      if (dragState || justDragged) return;
       const v2 = getViewer();
       if (!v2) return;
       const picked = v2.scene.pick(click.position);
