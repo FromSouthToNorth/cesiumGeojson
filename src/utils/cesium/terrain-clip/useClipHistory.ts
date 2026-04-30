@@ -17,7 +17,10 @@ import { Cartesian3 } from 'cesium';
 
 const HISTORY_MAX = 30;
 
-export function useClipHistory(positions: Ref<Cartesian3[]>) {
+export function useClipHistory(
+  positions: Ref<Cartesian3[]>,
+  options?: { onUndo?: () => void; onRedo?: () => void },
+) {
   /* ── 历史数据 ── */
   // history 数组存储历史快照，每个快照是 Cartesian3[] 的深拷贝
   const history = ref<Cartesian3[][]>([]);
@@ -60,6 +63,7 @@ export function useClipHistory(positions: Ref<Cartesian3[]>) {
     if (historyIndex.value <= 0) return;
     historyIndex.value--;
     applyHistory(history.value[historyIndex.value]);
+    options?.onUndo?.();
     return true;
   }
 
@@ -68,6 +72,7 @@ export function useClipHistory(positions: Ref<Cartesian3[]>) {
     if (historyIndex.value >= history.value.length - 1) return;
     historyIndex.value++;
     applyHistory(history.value[historyIndex.value]);
+    options?.onRedo?.();
     return true;
   }
 

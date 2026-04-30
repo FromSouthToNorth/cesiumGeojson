@@ -8,6 +8,15 @@
       <CheckOutlined />
       完成编辑
     </Button>
+    <div class="link-edit-row">
+      <span class="link-edit-label">联动编辑</span>
+      <Switch
+        v-model:checked="checked"
+        size="small"
+        :checked-children="'开'"
+        :un-checked-children="'关'"
+      />
+    </div>
     <div class="edit-toolbar">
       <Button size="small" :disabled="!canUndo" @click="$emit('undo')">撤销</Button>
       <Button size="small" :disabled="!canRedo" @click="$emit('redo')">重做</Button>
@@ -21,29 +30,53 @@
 </template>
 
 <script setup lang="ts">
-import { Button } from 'ant-design-vue';
+import { computed } from 'vue';
+import { Button, Switch } from 'ant-design-vue';
 import { CheckOutlined } from '@ant-design/icons-vue';
 
 defineOptions({ name: 'EditToolbar' });
 
-defineProps<{
+const props = defineProps<{
   visible: boolean;
   canUndo: boolean;
   canRedo: boolean;
   vertexCount: number;
+  linkEditEnabled?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   finish: [];
   undo: [];
   redo: [];
+  'update:linkEditEnabled': [value: boolean];
 }>();
+
+const checked = computed({
+  get: () => props.linkEditEnabled ?? false,
+  set: (val: boolean) => emit('update:linkEditEnabled', val),
+});
 </script>
 
 <style scoped>
 .edit-toolbar {
   display: flex;
   gap: 8px;
+}
+
+.link-edit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  background: var(--surface-bg-secondary, var(--surface-bg));
+}
+
+.link-edit-label {
+  color: var(--surface-text-muted);
+  font-size: 12px;
 }
 
 .editing-tip {

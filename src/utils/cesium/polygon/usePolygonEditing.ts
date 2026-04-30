@@ -24,20 +24,22 @@ import { message } from 'ant-design-vue';
 import { isValidViewer, pickGlobe } from '../shared/common';
 import { useKeyboardShortcuts } from '../shared/useKeyboardShortcuts';
 import type { ShortcutDef } from '../shared/useKeyboardShortcuts';
+import type { SnappingAPI } from '../shared/useBaseDrawing';
 
 export function usePolygonEditing(options: {
   viewer: ComputedRef<Viewer | null>;
   positions: Ref<Cartesian3[]>;
   /** 颜色 getter，每次 drawEditGraphics 时调用，确保使用最新颜色 */
   color?: () => string;
+  snapping?: SnappingAPI;
   onStart?: () => void;
-  onChange?: () => void;
+  onChange?: (changedIndex?: number, oldPosition?: Cartesian3) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   /** 键盘 Escape/Enter 退出编辑时回调（由 store 提供以同步更新实体 + 状态） */
   onExitEdit?: () => void;
 }) {
-  const { viewer, positions, color: colorGetter, onStart, onChange, onUndo, onRedo, onExitEdit } = options;
+  const { viewer, positions, color: colorGetter, snapping, onStart, onChange, onUndo, onRedo, onExitEdit } = options;
   const isEditing = ref(false);
   const getColor = colorGetter ?? (() => '#1890FF');
 
@@ -48,6 +50,7 @@ export function usePolygonEditing(options: {
   let editPointEntities: any[] = [];
   let editMidpointEntities: any[] = [];
   let dragState: { index: number } | null = null;
+  let dragStartPos: Cartesian3 | null = null;
   /** 拖拽刚结束时为 true，阻止 LEFT_CLICK 误触中点添加 */
   let justDragged = false;
   let lastMousePos: Cartesian2 | null = null;
@@ -97,6 +100,7 @@ export function usePolygonEditing(options: {
 
     drawEditGraphics();
     setupEditHandler();
+    snapping?.setup();
     kb.setup();
   }
 
@@ -110,6 +114,7 @@ export function usePolygonEditing(options: {
     isEditing.value = false;
     clearEditGraphics();
     destroyEditHandler();
+    snapping?.teardown();
     kb.teardown();
     dragState = null;
   }
@@ -247,6 +252,7 @@ export function usePolygonEditing(options: {
         const idx = editPointEntities.indexOf(picked.id);
         if (idx !== -1) {
           dragState = { index: idx };
+          dragStartPos = Cartesian3.clone(positions.value[idx]);
           v2.canvas.style.cursor = 'grabbing';
         }
       }
@@ -263,8 +269,14 @@ export function usePolygonEditing(options: {
         v2.scene.screenSpaceCameraController.enableInputs = false;
         const cartesian = pickGlobe(v2, movement.endPosition);
         if (cartesian) {
-          positions.value[dragState.index] = cartesian;
-          updateEditVertex(dragState.index, cartesian);
+          let finalPos = cartesian;
+          if (snapping) {
+            const exclude = positions.value.filter((_, i) => i !== dragState!.index);
+            const target = snapping.findSnapTarget(movement.endPosition, cartesian, exclude);
+            if (target) finalPos = target.position;
+          }
+          positions.value[dragState.index] = finalPos;
+          updateEditVertex(dragState.index, finalPos);
         }
       } else {
         v2.scene.screenSpaceCameraController.enableInputs = true;
@@ -275,12 +287,19 @@ export function usePolygonEditing(options: {
     /* LEFT_UP：结束拖拽 */
     editingHandler.setInputAction(() => {
       if (dragState) {
+        const changedIndex = dragState.index;
         dragState = null;
         justDragged = true; // 标记拖拽刚结束，阻止接下来的 LEFT_CLICK
         const v2 = getViewer();
         if (v2) v2.canvas.style.cursor = 'default';
-        onChange?.();
+        if (dragStartPos) {
+          onChange?.(changedIndex, dragStartPos);
+          dragStartPos = null;
+        } else {
+          onChange?.();
+        }
         drawEditGraphics();
+        snapping?.invalidateCache();
       }
     }, ScreenSpaceEventType.LEFT_UP);
 
@@ -374,6 +393,7 @@ export function usePolygonEditing(options: {
     stopEdit();
     dragState = null;
     lastMousePos = null;
+    snapping?.teardown();
   }
 
   return {

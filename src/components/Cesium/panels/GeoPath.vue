@@ -265,6 +265,7 @@
       :can-undo="store.canUndo"
       :can-redo="store.canRedo"
       :vertex-count="store.positions.length"
+      v-model:link-edit-enabled="store.linkEditEnabled"
       @finish="store.stopEdit()"
       @undo="store.undo()"
       @redo="store.redo()"

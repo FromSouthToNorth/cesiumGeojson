@@ -30,6 +30,7 @@ import type { GeoPolygon, GeoPolygonJSON } from '@/types/geoPolygon';
 import type { SlopeAnalysisResult } from '@/types/slopeAnalysis';
 import { analyzePolygonSlope } from '@/utils/cesium/polygon/usePolygonSlope';
 import { useGeoPathStore } from './geoPathStore';
+import { calcPathDistances } from '@/utils/cesium/path/usePathMeasure';
 
 /** 自动分配的多边形颜色 */
 const POLYGON_COLORS = ['#FF4D4F', '#52C41A', '#1890FF', '#FAAD14', '#722ED1', '#13C2C2', '#EB2F96', '#FA541C'];
@@ -54,6 +55,11 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
   const isDrawing = ref(false);
   const isEditing = ref(false);
   const snappingEnabled = ref(true);
+  const linkEditEnabled = ref(true);
+
+  /** 联动编辑时，被修改的其他图层的旧状态（用于撤销联动） */
+  const linkedPathUndoMap = ref(new Map<string, Cartesian3[]>());
+  const linkedPolygonUndoMap = ref(new Map<string, Cartesian3[]>());
 
   const activePolygon = computed(() => polygons.value.find((p) => p.id === activePolygonId.value) ?? null);
   const hasPolygons = computed(() => polygons.value.length > 0);
@@ -170,19 +176,61 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
    *  历史 + 编辑 composable
    * ============================== */
 
-  const history = useClipHistory(positions);
+  const history = useClipHistory(positions, {
+    onUndo: () => {
+      // 撤销联动修改的其他多边形
+      linkedPolygonUndoMap.value.forEach((oldPositions, id) => {
+        const poly = polygons.value.find((p) => p.id === id);
+        if (poly) {
+          poly.positions = oldPositions.map((p) => Cartesian3.clone(p));
+          poly.measurements = calcPolygonMeasure(poly.positions);
+          poly.vertexElevations = undefined;
+          updatePolygonEntity(poly.id, poly.positions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
+          if (poly.clipping) {
+            syncPolygonClipping();
+          }
+        }
+      });
+      // 撤销联动修改的其他路径
+      try {
+        const pathStore = useGeoPathStore();
+        linkedPathUndoMap.value.forEach((oldPositions, id) => {
+          const path = pathStore.paths.find((p) => p.id === id);
+          if (path) {
+            path.positions = oldPositions.map((p) => Cartesian3.clone(p));
+            path.measurements = calcPathDistances(path.positions);
+            path.elevationProfile = null;
+            pathStore.refreshPathEntity(path.id);
+          }
+        });
+      } catch {
+        // ignore
+      }
+      linkedPathUndoMap.value.clear();
+      linkedPolygonUndoMap.value.clear();
+    },
+  });
 
   const editing = usePolygonEditing({
     viewer,
     positions,
     color: () => activePolygon.value?.color ?? '#1890FF',
+    snapping: {
+      findSnapTarget: polygonSnapping.findSnapTarget,
+      setup: polygonSnapping.setup,
+      teardown: polygonSnapping.teardown,
+      invalidateCache: polygonSnapping.invalidateCache,
+    },
     onStart: () => history.pushHistory(),
-    onChange: () => {
+    onChange: (changedIndex?: number, oldPosition?: Cartesian3) => {
       history.pushHistory();
       const poly = activePolygon.value;
       if (poly) {
         poly.measurements = calcPolygonMeasure(poly.positions);
         poly.vertexElevations = undefined; // 顶点已变，清空海拔
+        if (linkEditEnabled.value && oldPosition && changedIndex !== undefined) {
+          syncLinkedVertices(oldPosition, poly.positions[changedIndex]);
+        }
       }
     },
     onUndo: undo,
@@ -453,6 +501,63 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
       }
     } finally {
       slopeLoading.value = false;
+    }
+  }
+
+  /* ==============================
+   *  联动编辑
+   * ============================== */
+
+  const LINK_EPSILON = 0.5; // 米，判定顶点共享的距离阈值
+
+  /** 拖拽顶点后，同步更新其他图层中共享同一坐标的顶点 */
+  function syncLinkedVertices(oldPos: Cartesian3, newPos: Cartesian3) {
+    linkedPathUndoMap.value.clear();
+    linkedPolygonUndoMap.value.clear();
+
+    // 同步其他多边形
+    polygons.value.forEach((poly) => {
+      if (poly.id === activePolygonId.value) return;
+      let changed = false;
+      const oldPositions = poly.positions.map((pos) => Cartesian3.clone(pos));
+      poly.positions.forEach((pos, idx) => {
+        if (Cartesian3.distance(pos, oldPos) < LINK_EPSILON) {
+          poly.positions[idx] = Cartesian3.clone(newPos);
+          changed = true;
+        }
+      });
+      if (changed) {
+        linkedPolygonUndoMap.value.set(poly.id, oldPositions);
+        poly.measurements = calcPolygonMeasure(poly.positions);
+        poly.vertexElevations = undefined;
+        updatePolygonEntity(poly.id, poly.positions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
+        if (poly.clipping) {
+          syncPolygonClipping();
+        }
+      }
+    });
+
+    // 同步路径
+    try {
+      const pathStore = useGeoPathStore();
+      pathStore.paths.forEach((path) => {
+        let changed = false;
+        const oldPositions = path.positions.map((pos) => Cartesian3.clone(pos));
+        path.positions.forEach((pos, idx) => {
+          if (Cartesian3.distance(pos, oldPos) < LINK_EPSILON) {
+            path.positions[idx] = Cartesian3.clone(newPos);
+            changed = true;
+          }
+        });
+        if (changed) {
+          linkedPathUndoMap.value.set(path.id, oldPositions);
+          path.measurements = calcPathDistances(path.positions);
+          path.elevationProfile = null;
+          pathStore.refreshPathEntity(path.id);
+        }
+      });
+    } catch {
+      // geoPathStore 可能尚未初始化
     }
   }
 
@@ -797,6 +902,7 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     isDrawing,
     showLabels,
     snappingEnabled,
+    linkEditEnabled,
     isSnapping: polygonSnapping.isSnapping,
     // computed
     activePolygon,
@@ -843,6 +949,8 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     // export
     downloadGeoJson,
     importFromGeoJson,
+    updatePolygonEntity,
+    syncPolygonClipping,
     // cleanup
     cleanupCesiumResources,
   };

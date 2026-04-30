@@ -17,19 +17,21 @@ import { message } from 'ant-design-vue';
 import { isValidViewer, pickGlobe } from '../shared/common';
 import { useKeyboardShortcuts } from '../shared/useKeyboardShortcuts';
 import type { ShortcutDef } from '../shared/useKeyboardShortcuts';
+import type { SnappingAPI } from '../shared/useBaseDrawing';
 
 export function usePathEditing(options: {
   viewer: ComputedRef<Viewer | null>;
   positions: Ref<Cartesian3[]>;
   color?: () => string;
+  snapping?: SnappingAPI;
   onStart?: () => void;
-  onChange?: () => void;
+  onChange?: (changedIndex?: number, oldPosition?: Cartesian3) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   /** 键盘 Escape/Enter 退出编辑时回调（由 store 提供以同步更新实体 + 状态） */
   onExitEdit?: () => void;
 }) {
-  const { viewer, positions, color: colorGetter, onStart, onChange, onUndo, onRedo, onExitEdit } = options;
+  const { viewer, positions, color: colorGetter, snapping, onStart, onChange, onUndo, onRedo, onExitEdit } = options;
   const isEditing = ref(false);
   const getColor = colorGetter ?? (() => '#1890FF');
 
@@ -39,6 +41,7 @@ export function usePathEditing(options: {
   let editPointEntities: any[] = [];
   let editMidpointEntities: any[] = [];
   let dragState: { index: number } | null = null;
+  let dragStartPos: Cartesian3 | null = null;
   let lastMousePos: Cartesian2 | null = null;
 
   function getViewer(): Viewer | null {
@@ -86,6 +89,7 @@ export function usePathEditing(options: {
 
     drawEditGraphics();
     setupEditHandler();
+    snapping?.setup();
     kb.setup();
   }
 
@@ -99,6 +103,7 @@ export function usePathEditing(options: {
     isEditing.value = false;
     clearEditGraphics();
     destroyEditHandler();
+    snapping?.teardown();
     kb.teardown();
     dragState = null;
   }
@@ -220,6 +225,7 @@ export function usePathEditing(options: {
         const idx = editPointEntities.indexOf(picked.id);
         if (idx !== -1) {
           dragState = { index: idx };
+          dragStartPos = Cartesian3.clone(positions.value[idx]);
           v2.canvas.style.cursor = 'grabbing';
         }
       }
@@ -235,8 +241,14 @@ export function usePathEditing(options: {
         v2.scene.screenSpaceCameraController.enableInputs = false;
         const cartesian = pickGlobe(v2, movement.endPosition);
         if (cartesian) {
-          positions.value[dragState.index] = cartesian;
-          updateEditVertex(dragState.index, cartesian);
+          let finalPos = cartesian;
+          if (snapping) {
+            const exclude = positions.value.filter((_, i) => i !== dragState!.index);
+            const target = snapping.findSnapTarget(movement.endPosition, cartesian, exclude);
+            if (target) finalPos = target.position;
+          }
+          positions.value[dragState.index] = finalPos;
+          updateEditVertex(dragState.index, finalPos);
         }
       } else {
         v2.scene.screenSpaceCameraController.enableInputs = true;
@@ -247,11 +259,18 @@ export function usePathEditing(options: {
     /* LEFT_UP：结束拖拽 */
     editingHandler.setInputAction(() => {
       if (dragState) {
+        const changedIndex = dragState.index;
         dragState = null;
         const v2 = getViewer();
         if (v2) v2.canvas.style.cursor = 'default';
-        onChange?.();
+        if (dragStartPos) {
+          onChange?.(changedIndex, dragStartPos);
+          dragStartPos = null;
+        } else {
+          onChange?.();
+        }
         drawEditGraphics();
+        snapping?.invalidateCache();
       }
     }, ScreenSpaceEventType.LEFT_UP);
 
@@ -347,6 +366,7 @@ export function usePathEditing(options: {
     stopEdit();
     dragState = null;
     lastMousePos = null;
+    snapping?.teardown();
   }
 
   return {
