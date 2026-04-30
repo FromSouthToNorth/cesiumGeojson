@@ -6,10 +6,21 @@
   <div ref="cesiumContainer" class="cesium-container">
     <Toolbox />
     <CesiumNavigation />
-    <MapPopup :visible="popupVisible" :entity="popupTarget" :screen-pos="popupScreenPos" :style="popupStyle"
-      @close="closePopup()" @update:style="onPopupStyleChange" />
-    <MapContextMenu :visible="contextMenuVisible" :entity="contextMenuTarget" :pos="contextMenuPos"
-      @close="closeContextMenu()" @action="handleContextAction" />
+    <MapPopup
+      :visible="popupVisible"
+      :entity="popupTarget"
+      :screen-pos="popupScreenPos"
+      :style="popupStyle"
+      @close="closePopup()"
+      @update:style="onPopupStyleChange"
+    />
+    <MapContextMenu
+      :visible="contextMenuVisible"
+      :entity="contextMenuTarget"
+      :pos="contextMenuPos"
+      @close="closeContextMenu()"
+      @action="handleContextAction"
+    />
   </div>
 </template>
 
@@ -74,7 +85,7 @@ const entityMove = useEntityMove({
 });
 
 onMounted(() => {
-  if (cesiumContainer.value) {
+  if (cesiumContainer.value && !viewer.value) {
     viewer.value = createViewer(cesiumContainer.value);
     setViewer(viewer.value);
     nextTick(() => {
@@ -85,11 +96,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   interaction.teardown();
-  if (viewer.value && !viewer.value.isDestroyed()) {
-    viewer.value.destroy();
+  const v = viewer.value;
+  if (v && !v.isDestroyed()) {
+    (v as any)._removeTerrainListener?.();
+    v.destroy();
   }
   clearViewer();
   viewer.value = null;
+  useGeoPolygonStore().cleanupCesiumResources();
 });
 
 function onPopupStyleChange(val: PopupVariantKey) {
@@ -112,7 +126,7 @@ function handleContextAction(payload: ContextActionEvent) {
         useGeoPathStore().flyToPath(_entity.path.id);
       } else if (_entity.type === 'geojson') {
         const v = toRaw(viewer.value);
-        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => { });
+        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => {});
       } else if (_entity.type === 'point') {
         const v = toRaw(viewer.value);
         if (v && !v.isDestroyed()) {

@@ -7,8 +7,13 @@
   <SidePanel :visible="visible" title="添加观测点" @update:visible="emit('update:visible', $event)">
     <!-- 地图选点模式 -->
     <div class="map-draw-section">
-      <Button block :type="isMapDrawing ? 'primary' : 'default'" :danger="isMapDrawing" aria-label="地图选点"
-        @click="toggleMapDrawing">
+      <Button
+        block
+        :type="isMapDrawing ? 'primary' : 'default'"
+        :danger="isMapDrawing"
+        aria-label="地图选点"
+        @click="toggleMapDrawing"
+      >
         <PushpinOutlined /> {{ isMapDrawing ? '取消选点' : '地图选点' }}
       </Button>
       <div v-if="isMapDrawing" class="map-draw-hint">
@@ -20,17 +25,43 @@
 
     <Form layout="vertical" :model="form">
       <Form.Item label="经度 (Longitude)" required :validate-status="validation.lng.status" :help="validation.lng.help">
-        <InputNumber v-model:value="form.lng" :min="-180" :max="180" :step="0.01" :precision="6" style="width: 100%"
-          placeholder="例如: 116.397" @blur="validateLng" />
+        <InputNumber
+          v-model:value="form.lng"
+          :min="-180"
+          :max="180"
+          :step="0.01"
+          :precision="6"
+          style="width: 100%"
+          placeholder="例如: 116.397"
+          @blur="validateLng"
+        />
       </Form.Item>
       <Form.Item label="纬度 (Latitude)" required :validate-status="validation.lat.status" :help="validation.lat.help">
-        <InputNumber v-model:value="form.lat" :min="-90" :max="90" :step="0.01" :precision="6" style="width: 100%"
-          placeholder="例如: 39.908" @blur="validateLat" />
+        <InputNumber
+          v-model:value="form.lat"
+          :min="-90"
+          :max="90"
+          :step="0.01"
+          :precision="6"
+          style="width: 100%"
+          placeholder="例如: 39.908"
+          @blur="validateLat"
+        />
       </Form.Item>
-      <Form.Item label="海拔 (Height) 米 — 留空自动使用地形高度" :validate-status="validation.alt.status"
-        :help="validation.alt.help">
-        <InputNumber v-model:value="form.alt" :min="-1000" :max="90000" :step="1" style="width: 100%"
-          placeholder="留空则采样地形高度" @blur="validateAlt" />
+      <Form.Item
+        label="海拔 (Height) 米 — 留空自动使用地形高度"
+        :validate-status="validation.alt.status"
+        :help="validation.alt.help"
+      >
+        <InputNumber
+          v-model:value="form.alt"
+          :min="-1000"
+          :max="90000"
+          :step="1"
+          style="width: 100%"
+          placeholder="留空则采样地形高度"
+          @blur="validateAlt"
+        />
       </Form.Item>
       <Form.Item>
         <Checkbox v-model:checked="keepOpen">保持面板开启（连续创建）</Checkbox>
@@ -72,9 +103,27 @@
 <script setup lang="ts">
 import { ref, reactive, toRaw, h, computed, watch, onUnmounted } from 'vue';
 import { Button, Form, InputNumber, Checkbox, Popconfirm, Dropdown, message } from 'ant-design-vue';
-import { EnvironmentOutlined, AimOutlined, CloseOutlined, ZoomInOutlined, MoreOutlined, PushpinOutlined } from '@ant-design/icons-vue';
+import {
+  EnvironmentOutlined,
+  AimOutlined,
+  CloseOutlined,
+  ZoomInOutlined,
+  MoreOutlined,
+  PushpinOutlined,
+} from '@ant-design/icons-vue';
 import { useCesiumStore } from '@/stores/cesiumStore';
-import { Cartesian3, Cartographic, sampleTerrain, HeadingPitchRange, Math as CesiumMath, Matrix4, Color, ScreenSpaceEventHandler, ScreenSpaceEventType, HeightReference } from 'cesium';
+import {
+  Cartesian3,
+  Cartographic,
+  sampleTerrain,
+  HeadingPitchRange,
+  Math as CesiumMath,
+  Matrix4,
+  Color,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+  HeightReference,
+} from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 import { pickGlobe } from '@/utils/cesium/shared/common';
 import { useSnapping } from '@/utils/cesium/shared/useSnapping';
@@ -135,7 +184,9 @@ const snapping = useSnapping({
           });
         }
       });
-    } catch { /* store may not be initialized */ }
+    } catch {
+      /* store may not be initialized */
+    }
     try {
       const polyStore = useGeoPolygonStore();
       polyStore.polygons.forEach((p) => {
@@ -150,7 +201,9 @@ const snapping = useSnapping({
           });
         }
       });
-    } catch { /* store may not be initialized */ }
+    } catch {
+      /* store may not be initialized */
+    }
     // 自己的点作为吸附目标
     points.value.forEach((p) => targets.push({ position: p.position, sourceType: 'point' }));
     return targets;

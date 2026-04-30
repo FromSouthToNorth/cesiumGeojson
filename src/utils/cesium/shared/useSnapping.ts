@@ -13,7 +13,14 @@
 
 import { ref, toRaw } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
-import { Cartesian3, Cartesian2, Color, HeightReference, PolylineDashMaterialProperty, PointPrimitiveCollection } from 'cesium';
+import {
+  Cartesian3,
+  Cartesian2,
+  Color,
+  HeightReference,
+  PolylineDashMaterialProperty,
+  PointPrimitiveCollection,
+} from 'cesium';
 import type { Viewer } from 'cesium';
 import { isValidViewer } from './common';
 

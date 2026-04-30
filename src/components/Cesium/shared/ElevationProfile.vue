@@ -381,7 +381,8 @@ function onProfileMouseMove(e: MouseEvent) {
 
   let nearestIdx = 0;
   // distances 为单调递增数组，使用二分查找代替线性扫描 O(log n)
-  let lo = 0, hi = distances.length - 1;
+  let lo = 0,
+    hi = distances.length - 1;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
     if (distances[mid] < dataDist) lo = mid + 1;

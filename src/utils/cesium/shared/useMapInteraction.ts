@@ -59,7 +59,12 @@ export interface PickedEntityPoint {
   position: Cartesian3;
 }
 
-export type PickedEntity = PickedEntityGeoPolygon | PickedEntityGeoPath | PickedEntityGeoJson | PickedEntityPoint | null;
+export type PickedEntity =
+  | PickedEntityGeoPolygon
+  | PickedEntityGeoPath
+  | PickedEntityGeoJson
+  | PickedEntityPoint
+  | null;
 
 export interface ContextMenuAction {
   id: string;
@@ -264,6 +269,7 @@ export function useMapInteraction(options: { viewer: ComputedRef<Viewer | null> 
   let handler: ScreenSpaceEventHandler | null = null;
   let removePostRender: (() => void) | null = null;
   let trackedPosition: Cartesian3 | null = null;
+  let canvasEl: HTMLCanvasElement | null = null;
 
   /* ─── 屏幕位置更新 ─── */
 
@@ -393,9 +399,10 @@ export function useMapInteraction(options: { viewer: ComputedRef<Viewer | null> 
     const v = toRaw(viewer.value);
     if (!isValidViewer(v)) return;
 
-    v.scene.canvas.addEventListener('contextmenu', onContextMenu);
+    canvasEl = v.scene.canvas;
+    canvasEl.addEventListener('contextmenu', onContextMenu);
 
-    handler = new ScreenSpaceEventHandler(v.scene.canvas);
+    handler = new ScreenSpaceEventHandler(canvasEl);
     handler.setInputAction(onLeftClick, ScreenSpaceEventType.LEFT_CLICK);
     handler.setInputAction(onRightDown, ScreenSpaceEventType.RIGHT_DOWN);
 
@@ -419,6 +426,10 @@ export function useMapInteraction(options: { viewer: ComputedRef<Viewer | null> 
     handler = null;
     removePostRender?.();
     removePostRender = null;
+    if (canvasEl) {
+      canvasEl.removeEventListener('contextmenu', onContextMenu);
+      canvasEl = null;
+    }
     closePopup();
     closeContextMenu();
   }

@@ -28,7 +28,8 @@ export function createViewer(container: HTMLElement) {
     requestRenderMode: true,
     maximumRenderTimeChange: Infinity,
   });
-  terrain.readyEvent.addEventListener(() => terrainEventHandler(viewer));
+  const removeTerrainListener = terrain.readyEvent.addEventListener(() => terrainEventHandler(viewer));
+  (viewer as any)._removeTerrainListener = removeTerrainListener;
 
   return viewer;
 }

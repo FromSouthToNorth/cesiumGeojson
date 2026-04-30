@@ -5,14 +5,7 @@
 
 import { ref, toRaw } from 'vue';
 import type { ComputedRef } from 'vue';
-import {
-  BoundingSphere,
-  Cartesian2,
-  Cartesian3,
-  Color,
-  ScreenSpaceEventHandler,
-  ScreenSpaceEventType,
-} from 'cesium';
+import { BoundingSphere, Cartesian2, Cartesian3, Color, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 import { isValidViewer, pickGlobe } from './common';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
@@ -143,9 +136,7 @@ export function useEntityMove(options: EntityMoveOptions) {
     if (!context || !ghostEntity) return;
 
     const delta = Cartesian3.subtract(globePos, originalCenter, new Cartesian3());
-    const newPositions = originalPositions.map((pos) =>
-      Cartesian3.add(pos, delta, new Cartesian3()),
-    );
+    const newPositions = originalPositions.map((pos) => Cartesian3.add(pos, delta, new Cartesian3()));
 
     if (context.type === 'geoPolygon' && ghostEntity.polygon) {
       (ghostEntity.polygon as any).hierarchy = newPositions;
@@ -160,9 +151,7 @@ export function useEntityMove(options: EntityMoveOptions) {
     if (!context) return;
 
     const delta = Cartesian3.subtract(globePos, originalCenter, new Cartesian3());
-    const newPositions = originalPositions.map((pos) =>
-      Cartesian3.add(pos, delta, new Cartesian3()),
-    );
+    const newPositions = originalPositions.map((pos) => Cartesian3.add(pos, delta, new Cartesian3()));
 
     onConfirm(context.id, newPositions);
     cleanup();

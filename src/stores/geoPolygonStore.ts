@@ -400,6 +400,15 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
    *  坡度分析
    * ============================== */
 
+  /** 清理 Cesium 实体与图元引用（不删除 polygons 数据） */
+  function cleanupCesiumResources() {
+    polygons.value.forEach((p) => {
+      removePolygonEntity(p);
+      removeSlopeGridEntities(p.id);
+    });
+    syncPolygonClipping();
+  }
+
   function clearSlopeAnalysis() {
     const id = activePolygonId.value;
     if (id) removeSlopeGridEntities(id);
@@ -834,6 +843,8 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     // export
     downloadGeoJson,
     importFromGeoJson,
+    // cleanup
+    cleanupCesiumResources,
   };
 });
 

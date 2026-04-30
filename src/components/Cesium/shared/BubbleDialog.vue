@@ -73,12 +73,7 @@ const leaderPath = ref('');
 let resizeObserver: ResizeObserver | null = null;
 
 const hasHeader = computed(() => {
-  return !!(
-    props.title ||
-    props.showCloseButton ||
-    slots['header-left'] ||
-    slots['header-actions']
-  );
+  return !!(props.title || props.showCloseButton || slots['header-left'] || slots['header-actions']);
 });
 
 /* ==============================

@@ -3,8 +3,15 @@
   内部使用 BubbleDialog 外壳，注入实体类型专属内容
 -->
 <template>
-  <BubbleDialog :visible="visible && !!entity" :screen-pos="screenPos" :style-variant="style" :title="entityName"
-    :width="280" :show-close-button="true" @close="close">
+  <BubbleDialog
+    :visible="visible && !!entity"
+    :screen-pos="screenPos"
+    :style-variant="style"
+    :title="entityName"
+    :width="280"
+    :show-close-button="true"
+    @close="close"
+  >
     <template #header-left>
       <span v-if="entity" class="pc-type-badge" :class="`pc-type-badge--${entity.type}`">
         <span v-if="colorDot" class="pc-color-dot" :style="{ background: colorDot }" />
@@ -33,8 +40,13 @@
 
     <!-- 底部操作按钮 -->
     <div class="pc-footer">
-      <button v-for="(btn, i) in actionButtons" :key="i" class="pc-footer-btn"
-        :class="{ 'pc-footer-btn--primary': btn.primary }" @click="btn.handler">
+      <button
+        v-for="(btn, i) in actionButtons"
+        :key="i"
+        class="pc-footer-btn"
+        :class="{ 'pc-footer-btn--primary': btn.primary }"
+        @click="btn.handler"
+      >
         <component :is="btn.icon" class="pc-footer-btn-icon" />
         <span>{{ btn.label }}</span>
       </button>
@@ -234,7 +246,7 @@ function flyToGeoJson(p: PickedEntityGeoJson) {
   const viewer = useCesiumStore().viewer;
   if (viewer && !(viewer as any).isDestroyed()) {
     const v = toRaw(viewer);
-    v.flyTo(p.entity).catch(() => { });
+    v.flyTo(p.entity).catch(() => {});
   }
   emit('close');
 }
@@ -321,9 +333,7 @@ const actionButtons = computed<ActionBtn[]>(() => {
     }
     case 'point': {
       const p = toRaw(props.entity);
-      return [
-        { icon: AimOutlined, label: '飞行', primary: true, handler: () => flyToPoint(p) },
-      ];
+      return [{ icon: AimOutlined, label: '飞行', primary: true, handler: () => flyToPoint(p) }];
     }
     default:
       return [];
