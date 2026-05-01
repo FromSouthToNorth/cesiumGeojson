@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, nextTick, toRaw } from 'vue';
+import { onMounted, onUnmounted, ref, shallowRef, computed, nextTick, toRaw } from 'vue';
 import type { Viewer } from 'cesium';
 import { Cartesian3, Cartographic, Math as CesiumMath } from 'cesium';
 import { message } from 'ant-design-vue';
@@ -47,7 +47,7 @@ defineOptions({ name: 'CesiumIndex' });
 
 const { setViewer, clearViewer } = useCesiumStore();
 const cesiumContainer = ref<HTMLDivElement | null>(null);
-const viewer = ref<Viewer | null>(null);
+const viewer = shallowRef<Viewer | null>(null);
 
 const cesiumViewer = computed(() => viewer.value);
 

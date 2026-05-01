@@ -197,6 +197,8 @@ export function useSnapping(options: UseSnappingOptions) {
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       });
     }
+    // requestRenderMode 下 scene.primitives.add() 不会自动触发渲染
+    v.scene.requestRender();
   }
 
   /** 隐藏所有目标顶点标记 */
