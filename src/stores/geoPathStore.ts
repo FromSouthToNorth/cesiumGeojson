@@ -121,7 +121,6 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     viewer,
     enabled: snappingEnabled,
     pixelThreshold: 12,
-    excludeLayerId: activePathId,
     collectTargets: () => {
       const targets: SnapSource[] = [];
       // 收集所有已有路径的顶点和边中点

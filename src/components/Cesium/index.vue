@@ -6,28 +6,17 @@
   <div ref="cesiumContainer" class="cesium-container">
     <Toolbox />
     <CesiumNavigation />
-    <MapPopup
-      :visible="popupVisible"
-      :entity="popupTarget"
-      :screen-pos="popupScreenPos"
-      :style="popupStyle"
-      @close="closePopup()"
-      @update:style="onPopupStyleChange"
-    />
-    <MapContextMenu
-      :visible="contextMenuVisible"
-      :entity="contextMenuTarget"
-      :pos="contextMenuPos"
-      @close="closeContextMenu()"
-      @action="handleContextAction"
-    />
+    <MapPopup :visible="popupVisible" :entity="popupTarget" :screen-pos="popupScreenPos" :style="popupStyle"
+      @close="closePopup()" @update:style="onPopupStyleChange" />
+    <MapContextMenu :visible="contextMenuVisible" :entity="contextMenuTarget" :pos="contextMenuPos"
+      @close="closeContextMenu()" @action="handleContextAction" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, shallowRef, computed, nextTick, toRaw } from 'vue';
 import type { Viewer } from 'cesium';
-import { Cartesian3, Cartographic, Math as CesiumMath } from 'cesium';
+import { Cartesian3, Cartographic, Math as CesiumMath, Cesium3DTileset } from 'cesium';
 import { message } from 'ant-design-vue';
 import { createViewer } from '@/utils/cesium/viewer';
 import { useCesiumStore } from '@/stores/cesiumStore';
@@ -90,6 +79,7 @@ onMounted(() => {
     setViewer(viewer.value);
     nextTick(() => {
       interaction.setup();
+      // load3dTilesModel();
     });
   }
 });
@@ -111,6 +101,26 @@ function onPopupStyleChange(val: PopupVariantKey) {
 }
 
 /* ==============================
+ *  加载 3D Tiles 模型
+ * ============================== */
+
+// async function load3dTilesModel() {
+//   const v = toRaw(viewer.value);
+//   if (!v || v.isDestroyed()) return;
+//   try {
+//     const tileset = await Cesium3DTileset.fromUrl(
+//       '/data/Task-of-2026-05-04T101139318Z-3d_tiles_model/tileset.json',
+//     );
+//     v.scene.primitives.add(tileset);
+//     v.flyTo(tileset).catch(() => { });
+//     message.success('3D Tiles 模型加载成功');
+//   } catch (err) {
+//     console.error('加载 3D Tiles 失败:', err);
+//     message.error('3D Tiles 模型加载失败');
+//   }
+// }
+
+/* ==============================
  *  右键菜单动作处理
  * ============================== */
 
@@ -126,7 +136,7 @@ function handleContextAction(payload: ContextActionEvent) {
         useGeoPathStore().flyToPath(_entity.path.id);
       } else if (_entity.type === 'geojson') {
         const v = toRaw(viewer.value);
-        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => {});
+        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => { });
       } else if (_entity.type === 'point') {
         const v = toRaw(viewer.value);
         if (v && !v.isDestroyed()) {

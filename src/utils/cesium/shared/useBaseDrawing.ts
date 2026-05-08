@@ -24,10 +24,14 @@ import {
   ScreenSpaceEventType,
 } from 'cesium';
 import type { Viewer } from 'cesium';
+import { message } from 'ant-design-vue';
 import { isValidViewer, pickGlobe } from './common';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import type { ShortcutDef } from './useKeyboardShortcuts';
 import type { SnapTarget } from './useSnapping';
+
+/** 连续两个顶点之间的最小距离（米），低于此值视为重复 */
+const MIN_VERTEX_DISTANCE = 1;
 
 /* ==============================
  *  类型定义
@@ -132,6 +136,11 @@ export function useBaseDrawing(options: UseBaseDrawingOptions): UseBaseDrawingRe
     return typeof colorOpt === 'function' ? colorOpt() : colorOpt;
   }
 
+  /** 排除自身顶点用于吸附：仅排除最后一个顶点，允许吸附到同图层之前的所有顶点 */
+  function getExcludePositions(): Cartesian3[] {
+    return positions.value.length > 0 ? [positions.value[positions.value.length - 1]] : [];
+  }
+
   /**
    * 吸附辅助函数：将地形坐标与吸附目标比较，返回吸附后坐标
    * @param disableSnap - 临时禁用（如 Shift 键按下）
@@ -142,8 +151,18 @@ export function useBaseDrawing(options: UseBaseDrawingOptions): UseBaseDrawingRe
     disableSnap = false,
   ): import('cesium').Cartesian3 {
     if (!snapping) return worldPos;
-    const target = snapping.findSnapTarget(screenPos, worldPos, positions.value, disableSnap);
+    const target = snapping.findSnapTarget(screenPos, worldPos, getExcludePositions(), disableSnap);
     return target ? target.position : worldPos;
+  }
+
+  /**
+   * 检查顶点是否与上一个顶点距离过近
+   * @returns true 表示距离过近，顶点被拒绝
+   */
+  function isTooCloseToLast(pos: Cartesian3): boolean {
+    const n = positions.value.length;
+    if (n === 0) return false;
+    return Cartesian3.distance(pos, positions.value[n - 1]) < MIN_VERTEX_DISTANCE;
   }
 
   /* ==============================
@@ -196,6 +215,10 @@ export function useBaseDrawing(options: UseBaseDrawingOptions): UseBaseDrawingRe
       const cartesian = pickGlobe(v2, movement.position);
       if (cartesian) {
         const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
+        if (isTooCloseToLast(finalPos)) {
+          message.warning('顶点距离过近，无法添加');
+          return;
+        }
         positions.value.push(Cartesian3.clone(finalPos));
         triggerRef(positions as any);
         snapping?.invalidateCache();
@@ -213,6 +236,10 @@ export function useBaseDrawing(options: UseBaseDrawingOptions): UseBaseDrawingRe
         const cartesian = pickGlobe(v2, movement.position);
         if (cartesian) {
           const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
+          if (isTooCloseToLast(finalPos)) {
+            message.warning('顶点距离过近，无法添加');
+            return;
+          }
           positions.value.push(Cartesian3.clone(finalPos));
           triggerRef(positions as any);
           snapping?.invalidateCache();

@@ -254,8 +254,8 @@ export class SnapEngine {
       this.screenCache.clear();
     }
 
-    // 构建排除集合（保留首顶点索引 0，用于闭合吸附）
-    const excludeList = excludePositions && excludePositions.length > 0 ? excludePositions.slice(1) : [];
+    // 排除集合：排除 excludePositions 中的所有顶点（含索引 0）
+    const excludeList = excludePositions && excludePositions.length > 0 ? excludePositions : [];
 
     const thresholdSq = this.pixelThreshold * this.pixelThreshold;
     const earlyExitThresholdSq = thresholdSq * 0.25; // threshold/2 的平方

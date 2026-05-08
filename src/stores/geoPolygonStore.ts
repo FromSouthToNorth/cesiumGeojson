@@ -114,7 +114,6 @@ export const useGeoPolygonStore = defineStore('geoPolygon', () => {
     viewer,
     enabled: snappingEnabled,
     pixelThreshold: 12,
-    excludeLayerId: activePolygonId,
     collectTargets: () => {
       const targets: SnapSource[] = [];
       // 收集所有已有勘测区域的顶点和边中点
