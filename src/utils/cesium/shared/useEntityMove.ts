@@ -5,8 +5,17 @@
 
 import { ref, toRaw } from 'vue';
 import type { ComputedRef } from 'vue';
-import { BoundingSphere, Cartesian2, Cartesian3, Color, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
+import {
+  BoundingSphere,
+  Cartesian2,
+  Cartesian3,
+  Cartographic,
+  Color,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+} from 'cesium';
 import type { Viewer, Entity } from 'cesium';
+import { Math as CesiumMath } from 'cesium';
 import { isValidViewer, pickGlobe } from './common';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import type { ShortcutDef } from './useKeyboardShortcuts';
@@ -19,7 +28,11 @@ export interface MoveContext {
   id: string;
   positions: Cartesian3[];
   color: string;
-  type: 'geoPolygon' | 'geoPath';
+  type: 'geoPolygon' | 'geoPath' | 'geoCircle' | 'geoRectangle';
+  /** 圆形半径（仅 type=geoCircle） */
+  radius?: number;
+  /** 矩形四至（仅 type=geoRectangle）[west, south, east, north] */
+  bounds?: number[];
 }
 
 interface EntityMoveOptions {
@@ -53,6 +66,42 @@ export function useEntityMove(options: EntityMoveOptions) {
 
   const kb = useKeyboardShortcuts(shortcuts);
 
+  /* ─── 形状辅助：折线环 / 矩形角点 ─── */
+
+  const CIRCLE_SEGMENTS = 64;
+
+  /** 缓存的环形数组，避免每帧分配 65 个 Cartesian3 */
+  const _ringCache: Cartesian3[] = [];
+  for (let i = 0; i <= CIRCLE_SEGMENTS; i++) _ringCache.push(new Cartesian3());
+
+  function buildCircleRing(center: Cartesian3, radius: number): Cartesian3[] {
+    const carto = Cartographic.fromCartesian(center);
+    const latDegFactor = radius / 111320;
+    for (let i = 0; i <= CIRCLE_SEGMENTS; i++) {
+      const angle = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+      const latOffset = latDegFactor * Math.cos(angle);
+      const lonOffset = (radius / (111320 * Math.cos(carto.latitude))) * Math.sin(angle);
+      Cartesian3.fromDegrees(
+        CesiumMath.toDegrees(carto.longitude) + lonOffset,
+        CesiumMath.toDegrees(carto.latitude) + latOffset,
+        carto.height,
+        undefined,
+        _ringCache[i],
+      );
+    }
+    return _ringCache;
+  }
+
+  function buildRectCorners(bounds: number[]): Cartesian3[] {
+    return [
+      Cartesian3.fromDegrees(bounds[0], bounds[1]),
+      Cartesian3.fromDegrees(bounds[2], bounds[1]),
+      Cartesian3.fromDegrees(bounds[2], bounds[3]),
+      Cartesian3.fromDegrees(bounds[0], bounds[3]),
+      Cartesian3.fromDegrees(bounds[0], bounds[1]),
+    ];
+  }
+
   /* ─── 幽灵实体创建 ─── */
 
   function createGhostEntity(ctx: MoveContext) {
@@ -71,11 +120,31 @@ export function useEntityMove(options: EntityMoveOptions) {
           outlineWidth: 2,
         },
       });
-    } else {
+    } else if (ctx.type === 'geoPath') {
       ghostEntity = v.entities.add({
         polyline: {
           positions: ctx.positions,
           width: 6,
+          material: color.withAlpha(0.4),
+          clampToGround: true,
+        },
+      });
+    } else if (ctx.type === 'geoCircle') {
+      ghostEntity = v.entities.add({
+        polyline: {
+          positions: buildCircleRing(ctx.positions[0], ctx.radius ?? 1000),
+          width: 4,
+          material: color.withAlpha(0.4),
+          clampToGround: true,
+        },
+      });
+    } else if (ctx.type === 'geoRectangle') {
+      const b = ctx.bounds ?? [0, 0, 0, 0];
+      const corners = buildRectCorners(b);
+      ghostEntity = v.entities.add({
+        polyline: {
+          positions: corners,
+          width: 4,
           material: color.withAlpha(0.4),
           clampToGround: true,
         },
@@ -96,8 +165,6 @@ export function useEntityMove(options: EntityMoveOptions) {
 
     if (ctx.type === 'geoPolygon' && entity.polygon) {
       const poly = entity.polygon as any;
-      // 保存原始 Property 对象（而非调用 getValue() 得到普通对象），
-      // 避免 restore 时 Cesium 的 setter 无法推断 material 类型
       savedStyle.material = poly.material;
       savedStyle.outlineColor = poly.outlineColor;
       savedStyle.outlineWidth = poly.outlineWidth;
@@ -110,6 +177,20 @@ export function useEntityMove(options: EntityMoveOptions) {
       const pl = entity.polyline as any;
       savedStyle.width = pl.width;
       pl.width = 5;
+    } else if (ctx.type === 'geoCircle' && (entity as any).ellipse) {
+      const el = (entity as any).ellipse;
+      savedStyle.outlineColor = el.outlineColor;
+      savedStyle.outlineWidth = el.outlineWidth;
+      const color = Color.fromCssColorString(ctx.color);
+      el.outlineColor = color.withAlpha(0.9);
+      el.outlineWidth = 4;
+    } else if (ctx.type === 'geoRectangle' && (entity as any).rectangle) {
+      const rect = (entity as any).rectangle;
+      savedStyle.outlineColor = rect.outlineColor;
+      savedStyle.outlineWidth = rect.outlineWidth;
+      const color = Color.fromCssColorString(ctx.color);
+      rect.outlineColor = color.withAlpha(0.9);
+      rect.outlineWidth = 4;
     }
   }
 
@@ -124,6 +205,14 @@ export function useEntityMove(options: EntityMoveOptions) {
     } else if (originalEntity.polyline) {
       const pl = originalEntity.polyline as any;
       if (savedStyle.width !== undefined) pl.width = savedStyle.width;
+    } else if ((originalEntity as any).ellipse) {
+      const el = (originalEntity as any).ellipse;
+      if (savedStyle.outlineColor !== undefined) el.outlineColor = savedStyle.outlineColor;
+      if (savedStyle.outlineWidth !== undefined) el.outlineWidth = savedStyle.outlineWidth;
+    } else if ((originalEntity as any).rectangle) {
+      const rect = (originalEntity as any).rectangle;
+      if (savedStyle.outlineColor !== undefined) rect.outlineColor = savedStyle.outlineColor;
+      if (savedStyle.outlineWidth !== undefined) rect.outlineWidth = savedStyle.outlineWidth;
     }
 
     originalEntity = null;
@@ -136,12 +225,26 @@ export function useEntityMove(options: EntityMoveOptions) {
     if (!context || !ghostEntity) return;
 
     const delta = Cartesian3.subtract(globePos, originalCenter, new Cartesian3());
-    const newPositions = originalPositions.map((pos) => Cartesian3.add(pos, delta, new Cartesian3()));
 
     if (context.type === 'geoPolygon' && ghostEntity.polygon) {
+      const newPositions = originalPositions.map((pos) => Cartesian3.add(pos, delta, new Cartesian3()));
       (ghostEntity.polygon as any).hierarchy = newPositions;
     } else if (context.type === 'geoPath' && ghostEntity.polyline) {
+      const newPositions = originalPositions.map((pos) => Cartesian3.add(pos, delta, new Cartesian3()));
       (ghostEntity.polyline as any).positions = newPositions;
+    } else if (context.type === 'geoCircle') {
+      const newCenter = Cartesian3.add(originalPositions[0], delta, new Cartesian3());
+      (ghostEntity.polyline as any).positions = buildCircleRing(newCenter, context.radius ?? 1000);
+    } else if (context.type === 'geoRectangle') {
+      const origCenterCarto = Cartographic.fromCartesian(originalCenter);
+      const newCenter = Cartesian3.add(originalCenter, delta, new Cartesian3());
+      const newCenterCarto = Cartographic.fromCartesian(newCenter);
+      const dLon = CesiumMath.toDegrees(newCenterCarto.longitude - origCenterCarto.longitude);
+      const dLat = CesiumMath.toDegrees(newCenterCarto.latitude - origCenterCarto.latitude);
+      const b = context.bounds ?? [0, 0, 0, 0];
+      (ghostEntity.polyline as any).positions = buildRectCorners([
+        b[0] + dLon, b[1] + dLat, b[2] + dLon, b[3] + dLat,
+      ]);
     }
   }
 
@@ -167,6 +270,8 @@ export function useEntityMove(options: EntityMoveOptions) {
   /* ─── 清理 ─── */
 
   function cleanup() {
+    if (_moveRafId !== null) { cancelAnimationFrame(_moveRafId); _moveRafId = null; }
+    _pendingGlobePos = null;
     if (ghostEntity) {
       const v = toRaw(viewer.value);
       if (v && !v.isDestroyed()) {
@@ -190,14 +295,23 @@ export function useEntityMove(options: EntityMoveOptions) {
 
   /* ─── 事件处理 ─── */
 
-  function onMouseMove(movement: { endPosition: Cartesian2 }) {
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v) || !context) return;
+  // RAF 节流
+  let _moveRafId: number | null = null;
+  let _pendingGlobePos: Cartesian3 | null = null;
 
-    const globePos = pickGlobe(v, movement.endPosition);
-    if (globePos) {
-      updateGhost(globePos);
-    }
+  function onMouseMove(movement: { endPosition: Cartesian2 }) {
+    if (!context) return;
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    _pendingGlobePos = pickGlobe(v, movement.endPosition);
+    if (_moveRafId !== null) return;
+    _moveRafId = requestAnimationFrame(() => {
+      _moveRafId = null;
+      if (_pendingGlobePos) {
+        updateGhost(_pendingGlobePos);
+        _pendingGlobePos = null;
+      }
+    });
   }
 
   function onLeftClick(movement: { position: { x: number; y: number } }) {

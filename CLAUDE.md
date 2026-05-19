@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # CesiumGeojson
 
 ## Tech Stack
@@ -18,6 +22,14 @@
 - `pnpm format:fix` — Prettier auto-format
 - `pnpm stylelint` — Stylelint check (CSS/Vue)
 - `pnpm stylelint:fix` — Stylelint auto-fix
+
+No test runner is configured.
+
+## Environment Setup
+- Copy `.env.example` → `.env` and set `VITE_CESIUM_ION_TOKEN` to a valid [Cesium Ion](https://cesium.com/ion) token. Without it, terrain provider initialization in `utils/cesium/viewer.ts` will fail.
+
+## Build & Path Aliases
+- Vite config (`vite.config.ts`): plugins `@vitejs/plugin-vue` + `vite-plugin-cesium-build`. Path alias `@` → `src/` is the only alias — prefer it for imports across feature directories (e.g. `import { ... } from '@/stores/...'`).
 
 ## VS Code Setup
 - **Extensions**: ESLint, Prettier, Stylelint

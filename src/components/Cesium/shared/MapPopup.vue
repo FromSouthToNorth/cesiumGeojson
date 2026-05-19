@@ -67,7 +67,9 @@ import {
   BgColorsOutlined,
 } from '@ant-design/icons-vue';
 import { useGeoPolygonStore, formatArea, formatDist } from '@/stores/geoPolygonStore';
+import { calcGeoRectangleSize } from '@/utils/cesium/shared/common';
 import { useGeoPathStore } from '@/stores/geoPathStore';
+import { useGeoShapeStore } from '@/stores/geoShapeStore';
 import { useGeoJsonStore } from '@/stores/geojsonStore';
 import { Cartesian3, Cartographic, Math as CesiumMath } from 'cesium';
 import { useCesiumStore } from '@/stores/cesiumStore';
@@ -75,6 +77,8 @@ import type {
   PickedEntity,
   PickedEntityGeoPolygon,
   PickedEntityGeoPath,
+  PickedEntityGeoCircle,
+  PickedEntityGeoRectangle,
   PickedEntityGeoJson,
   PickedEntityPoint,
 } from '@/utils/cesium/shared/useMapInteraction';
@@ -107,6 +111,10 @@ const entityName = computed(() => {
       return props.entity.polygon.name;
     case 'geoPath':
       return props.entity.path.name;
+    case 'geoCircle':
+      return props.entity.circle.name;
+    case 'geoRectangle':
+      return props.entity.rectangle.name;
     case 'geojson':
       return props.entity.feature.name;
     case 'point':
@@ -120,6 +128,8 @@ const colorDot = computed(() => {
   if (!props.entity) return null;
   if (props.entity.type === 'geoPolygon') return props.entity.polygon.color;
   if (props.entity.type === 'geoPath') return props.entity.path.color;
+  if (props.entity.type === 'geoCircle') return props.entity.circle.color;
+  if (props.entity.type === 'geoRectangle') return props.entity.rectangle.color;
   if (props.entity.type === 'point') return '#ff4d4f';
   return null;
 });
@@ -131,6 +141,10 @@ const typeLabel = computed(() => {
       return '勘测区域';
     case 'geoPath':
       return '地质路径';
+    case 'geoCircle':
+      return '圆形';
+    case 'geoRectangle':
+      return '矩形';
     case 'geojson': {
       const e = props.entity.entity;
       if (e.polygon) return '多边形要素';
@@ -172,6 +186,24 @@ const detailRows = computed(() => {
     }
     case 'geojson': {
       return [{ label: '图层', value: props.entity.layer.name }];
+    }
+    case 'geoCircle': {
+      const c = props.entity.circle;
+      return [
+        { label: '圆心', value: `${c.center[0].toFixed(4)}, ${c.center[1].toFixed(4)}` },
+        { label: '半径', value: formatDist(c.radius) },
+        { label: '周长', value: formatDist(2 * Math.PI * c.radius) },
+        { label: '面积', value: formatArea(Math.PI * c.radius * c.radius) },
+      ];
+    }
+    case 'geoRectangle': {
+      const r = props.entity.rectangle;
+      const { width, height } = calcGeoRectangleSize(r);
+      return [
+        { label: '宽度', value: formatDist(width) },
+        { label: '高度', value: formatDist(height) },
+        { label: '面积', value: formatArea(width * height) },
+      ];
     }
     case 'point': {
       const carto = Cartographic.fromCartesian(props.entity.position);
@@ -291,6 +323,24 @@ function playbackPath(p: PickedEntityGeoPath) {
   emit('close');
 }
 
+function flyToCircle(p: PickedEntityGeoCircle) {
+  useGeoShapeStore().flyTo('geoCircle', p.circle.id);
+  emit('close');
+}
+
+function flyToRectangle(p: PickedEntityGeoRectangle) {
+  useGeoShapeStore().flyTo('geoRectangle', p.rectangle.id);
+  emit('close');
+}
+
+function toggleCircleVisibility(p: PickedEntityGeoCircle) {
+  useGeoShapeStore().toggleVisibility('geoCircle', p.circle.id);
+}
+
+function toggleRectangleVisibility(p: PickedEntityGeoRectangle) {
+  useGeoShapeStore().toggleVisibility('geoRectangle', p.rectangle.id);
+}
+
 function removeGeoJson(p: PickedEntityGeoJson) {
   p.entity.show = false;
 }
@@ -331,6 +381,24 @@ const actionButtons = computed<ActionBtn[]>(() => {
         { icon: EyeInvisibleOutlined, label: '移出', handler: () => removeGeoJson(p) },
       ];
     }
+    case 'geoCircle': {
+      const c = toRaw(props.entity);
+      const visLabel = c.circle.visible ? '隐藏' : '显示';
+      const visIcon = c.circle.visible ? EyeOutlined : EyeInvisibleOutlined;
+      return [
+        { icon: AimOutlined, label: '飞行', primary: true, handler: () => flyToCircle(c) },
+        { icon: visIcon, label: visLabel, handler: () => toggleCircleVisibility(c) },
+      ];
+    }
+    case 'geoRectangle': {
+      const r = toRaw(props.entity);
+      const visLabel = r.rectangle.visible ? '隐藏' : '显示';
+      const visIcon = r.rectangle.visible ? EyeOutlined : EyeInvisibleOutlined;
+      return [
+        { icon: AimOutlined, label: '飞行', primary: true, handler: () => flyToRectangle(r) },
+        { icon: visIcon, label: visLabel, handler: () => toggleRectangleVisibility(r) },
+      ];
+    }
     case 'point': {
       const p = toRaw(props.entity);
       return [{ icon: AimOutlined, label: '飞行', primary: true, handler: () => flyToPoint(p) }];
@@ -365,15 +433,15 @@ function close() {
   color: var(--surface-text-muted);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.2px;
   line-height: 1.6;
+  letter-spacing: 0.2px;
 }
 
 .pc-color-dot {
+  flex-shrink: 0;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  flex-shrink: 0;
 }
 
 /* ───────── 主体 ───────── */
@@ -401,11 +469,11 @@ function close() {
 }
 
 .pc-detail-value {
+  overflow: hidden;
   color: var(--surface-text);
   font-size: 12px;
   font-weight: 500;
   text-align: right;
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -438,8 +506,8 @@ function close() {
 }
 
 .pc-footer-btn:hover {
-  background: var(--surface-hover);
   border-color: var(--surface-border);
+  background: var(--surface-hover);
   color: var(--color-text);
 }
 

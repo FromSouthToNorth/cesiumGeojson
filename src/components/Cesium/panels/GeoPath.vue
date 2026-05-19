@@ -6,7 +6,7 @@
   <SidePanel
     :visible="visible"
     title="地质路径"
-    :disableEscape="store.isDrawing || store.isEditing"
+    :disable-escape="store.isDrawing || store.isEditing"
     @update:visible="emit('update:visible', $event)"
   >
     <!-- ── 状态1：空闲 ── -->
@@ -261,11 +261,11 @@
     </template>
 
     <EditToolbar
+      v-model:link-edit-enabled="store.linkEditEnabled"
       :visible="store.isEditing"
       :can-undo="store.canUndo"
       :can-redo="store.canRedo"
       :vertex-count="store.positions.length"
-      v-model:link-edit-enabled="store.linkEditEnabled"
       @finish="store.stopEdit()"
       @undo="store.undo()"
       @redo="store.redo()"

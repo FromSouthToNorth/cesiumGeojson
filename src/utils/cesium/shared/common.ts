@@ -1,4 +1,4 @@
-import { Cartesian3, Cartesian2 } from 'cesium';
+import { Cartesian3, Cartesian2, Cartographic, EllipsoidGeodesic } from 'cesium';
 import type { Viewer } from 'cesium';
 
 /* ==============================
@@ -74,4 +74,19 @@ export function formatArea(area: number): string {
 export function formatDist(dist: number): string {
   if (dist >= 1000) return `${(dist / 1000).toFixed(3)} km`;
   return `${dist.toFixed(1)} m`;
+}
+
+/** 计算地理矩形的宽度和高度（大地测地线距离） */
+export function calcGeoRectangleSize(rect: { west: number; south: number; east: number; north: number }): { width: number; height: number } {
+  const midLat = (rect.south + rect.north) / 2;
+  const midLon = (rect.west + rect.east) / 2;
+  const width = new EllipsoidGeodesic(
+    Cartographic.fromDegrees(rect.west, midLat),
+    Cartographic.fromDegrees(rect.east, midLat),
+  ).surfaceDistance;
+  const height = new EllipsoidGeodesic(
+    Cartographic.fromDegrees(midLon, rect.south),
+    Cartographic.fromDegrees(midLon, rect.north),
+  ).surfaceDistance;
+  return { width, height };
 }

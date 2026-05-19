@@ -223,15 +223,15 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 .bubble-leader-line {
+  opacity: 0.55;
   fill: none;
   stroke: var(--color-primary);
   stroke-width: 1.5px;
-  opacity: 0.55;
 }
 
 .bubble-leader-dot {
-  fill: var(--color-primary);
   opacity: 0.7;
+  fill: var(--color-primary);
 }
 
 /* ───────── 气泡卡片 ───────── */
@@ -261,7 +261,7 @@ function onKeyDown(e: KeyboardEvent) {
 .bubble-card--card {
   border: 1px solid var(--surface-border);
   background: color-mix(in srgb, var(--surface-bg) 95%, #000);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.15);
   backdrop-filter: none;
 }
 
@@ -275,24 +275,24 @@ function onKeyDown(e: KeyboardEvent) {
 
 .bubble-header-left {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 1;
 }
 
 .bubble-header-right {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 2px;
-  flex-shrink: 0;
 }
 
 .bubble-title {
+  overflow: hidden;
   color: var(--color-text);
   font-size: 13px;
   font-weight: 600;
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

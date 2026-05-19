@@ -137,6 +137,10 @@ const entityName = computed(() => {
       return props.entity.polygon.name;
     case 'geoPath':
       return props.entity.path.name;
+    case 'geoCircle':
+      return props.entity.circle.name;
+    case 'geoRectangle':
+      return props.entity.rectangle.name;
     case 'geojson':
       return props.entity.feature.name;
     case 'point':
@@ -165,6 +169,10 @@ const typeLabel = computed(() => {
       return '勘测区域';
     case 'geoPath':
       return '地质路径';
+    case 'geoCircle':
+      return '圆形';
+    case 'geoRectangle':
+      return '矩形';
     case 'geojson':
       return `要素 · ${geoTypeLabel.value}`;
     case 'point':
@@ -217,6 +225,24 @@ const actions = computed<MenuItem[]>(() => {
         { id: 'viewProperties', label: '查看属性', icon: InfoCircleOutlined },
         { id: '__sep__', separator: true },
         { id: 'delete', label: '移出视图', icon: EyeInvisibleOutlined, danger: true },
+      ];
+    case 'geoCircle':
+      return [
+        { id: 'flyTo', label: '飞行定位', icon: AimOutlined },
+        { id: 'edit', label: '编辑圆形', icon: EditOutlined },
+        { id: 'move', label: '移动', icon: DragOutlined },
+        { id: 'toggleVisibility', label: '显隐切换', icon: EyeOutlined },
+        { id: '__sep__', separator: true },
+        { id: 'delete', label: '删除圆形', icon: DeleteOutlined, danger: true },
+      ];
+    case 'geoRectangle':
+      return [
+        { id: 'flyTo', label: '飞行定位', icon: AimOutlined },
+        { id: 'edit', label: '编辑矩形', icon: EditOutlined },
+        { id: 'move', label: '移动', icon: DragOutlined },
+        { id: 'toggleVisibility', label: '显隐切换', icon: EyeOutlined },
+        { id: '__sep__', separator: true },
+        { id: 'delete', label: '删除矩形', icon: DeleteOutlined, danger: true },
       ];
     case 'point':
       return [

@@ -172,9 +172,7 @@ export function useSnapping(options: UseSnappingOptions) {
     const targets = engine.getTargets();
     const excluded = excludeLayerId?.value;
     // 过滤掉当前正在编辑/绘制的图层目标，避免与编辑模式自身标记重叠
-    const filtered = excluded
-      ? targets.filter((t) => t.layerId !== excluded)
-      : targets;
+    const filtered = excluded ? targets.filter((t) => t.layerId !== excluded) : targets;
     // 限制显示数量，避免过多标记拖慢渲染
     const maxMarkers = 200;
     const displayTargets = filtered.slice(0, maxMarkers);

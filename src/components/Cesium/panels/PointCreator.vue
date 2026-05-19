@@ -794,9 +794,9 @@ onUnmounted(() => {
   min-width: 20px;
   height: 20px;
   padding: 0 4px;
-  border: 1px solid rgba(255 255 255 / 0.4);
+  border: 1px solid rgb(255 255 255 / 0.4);
   border-radius: 3px;
-  background: rgba(255 255 255 / 0.15);
+  background: rgb(255 255 255 / 0.15);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 11px;
 }
@@ -811,12 +811,12 @@ onUnmounted(() => {
 
 .divider-text::before,
 .divider-text::after {
+  content: '';
   position: absolute;
   top: 50%;
   width: calc(50% - 48px);
   height: 1px;
   background: var(--surface-border);
-  content: '';
 }
 
 .divider-text::before {

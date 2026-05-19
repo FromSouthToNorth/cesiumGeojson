@@ -6,7 +6,7 @@
   <SidePanel
     :visible="visible"
     title="地形裁切"
-    :disableEscape="store.isDrawing || store.isEditing"
+    :disable-escape="store.isDrawing || store.isEditing"
     @update:visible="emit('update:visible', $event)"
   >
     <Space direction="vertical" style="width: 100%">

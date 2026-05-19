@@ -17,11 +17,13 @@ import {
 import type { Viewer, Entity } from 'cesium';
 import { useGeoPolygonStore } from '@/stores/geoPolygonStore';
 import { useGeoPathStore } from '@/stores/geoPathStore';
+import { useGeoShapeStore } from '@/stores/geoShapeStore';
 import { useGeoJsonStore } from '@/stores/geojsonStore';
 import { useTerrainClipStore } from '@/stores/terrainClipStore';
 import type { GeoJsonFeature, GeoJsonLayer } from '@/stores/geojsonStore';
 import type { GeoPolygon } from '@/types/geoPolygon';
 import type { GeoPath } from '@/types/geoPath';
+import type { GeoCircle, GeoRectangle } from '@/types/geoShape';
 import type { PopupVariantKey } from '@/components/Cesium/shared/popupVariants';
 import { isValidViewer, pickGlobe } from './common';
 
@@ -29,7 +31,7 @@ import { isValidViewer, pickGlobe } from './common';
  *  类型定义
  * ============================== */
 
-export type PickedEntityType = 'geoPolygon' | 'geoPath' | 'geojson' | 'point';
+export type PickedEntityType = 'geoPolygon' | 'geoPath' | 'geojson' | 'point' | 'geoCircle' | 'geoRectangle';
 
 export interface PickedEntityGeoPolygon {
   type: 'geoPolygon';
@@ -42,6 +44,20 @@ export interface PickedEntityGeoPath {
   type: 'geoPath';
   entity: Entity;
   path: GeoPath;
+  position: Cartesian3;
+}
+
+export interface PickedEntityGeoCircle {
+  type: 'geoCircle';
+  entity: Entity;
+  circle: GeoCircle;
+  position: Cartesian3;
+}
+
+export interface PickedEntityGeoRectangle {
+  type: 'geoRectangle';
+  entity: Entity;
+  rectangle: GeoRectangle;
   position: Cartesian3;
 }
 
@@ -62,6 +78,8 @@ export interface PickedEntityPoint {
 export type PickedEntity =
   | PickedEntityGeoPolygon
   | PickedEntityGeoPath
+  | PickedEntityGeoCircle
+  | PickedEntityGeoRectangle
   | PickedEntityGeoJson
   | PickedEntityPoint
   | null;
@@ -135,6 +153,8 @@ const TEMP_ENTITY_PREFIXES = [
   'edit-',
   'snap-',
   'playback_',
+  'shape_draw_',
+  'shape_edit_',
   'geoPolygon_draw_',
   'geoPath_draw_',
   'clip_draw_',
@@ -170,6 +190,12 @@ function isAnyStoreBusy(): boolean {
   try {
     const clipStore = useTerrainClipStore();
     if (clipStore.isDrawing || clipStore.isEditing) return true;
+  } catch {
+    // ignore
+  }
+  try {
+    const shapeStore = useGeoShapeStore();
+    if (shapeStore.isDrawing || shapeStore.isEditing || shapeStore.isMoving) return true;
   } catch {
     // ignore
   }
@@ -221,7 +247,41 @@ function pickEntity(v: Viewer, screenPos: { x: number; y: number }): PickedEntit
     }
   }
 
-  // 3. GeoJSON 要素（引用匹配）
+  // 3. GeoCircle
+  const circleMatch = entityId.match(/^geoCircle_([a-z0-9]+)$/);
+  if (circleMatch) {
+    try {
+      const store = useGeoShapeStore();
+      const circle = store.circles.find((c) => c.id === circleMatch[1]);
+      if (circle) {
+        const pos =
+          getEntityPosition(entity) ??
+          Cartesian3.fromDegrees(circle.center[0], circle.center[1], circle.center[2] ?? 0);
+        return { type: 'geoCircle', entity, circle, position: pos };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. GeoRectangle
+  const rectMatch = entityId.match(/^geoRectangle_([a-z0-9]+)$/);
+  if (rectMatch) {
+    try {
+      const store = useGeoShapeStore();
+      const rect = store.rectangles.find((r) => r.id === rectMatch[1]);
+      if (rect) {
+        const centerLon = (rect.west + rect.east) / 2;
+        const centerLat = (rect.south + rect.north) / 2;
+        const pos = getEntityPosition(entity) ?? Cartesian3.fromDegrees(centerLon, centerLat, rect.height ?? 0);
+        return { type: 'geoRectangle', entity, rectangle: rect, position: pos };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 5. GeoJSON 要素（引用匹配）
   try {
     const geojsonStore = useGeoJsonStore();
     for (const layer of geojsonStore.layers) {
@@ -236,7 +296,7 @@ function pickEntity(v: Viewer, screenPos: { x: number; y: number }): PickedEntit
     // ignore
   }
 
-  // 4. 观测点
+  // 6. 观测点
   const pointMatch = entityId.match(/^point_(\d+)$/);
   if (pointMatch) {
     const pos = getEntityPosition(entity) ?? new Cartesian3(0, 0, 0);

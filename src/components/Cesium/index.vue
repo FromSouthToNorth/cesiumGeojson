@@ -6,10 +6,21 @@
   <div ref="cesiumContainer" class="cesium-container">
     <Toolbox />
     <CesiumNavigation />
-    <MapPopup :visible="popupVisible" :entity="popupTarget" :screen-pos="popupScreenPos" :style="popupStyle"
-      @close="closePopup()" @update:style="onPopupStyleChange" />
-    <MapContextMenu :visible="contextMenuVisible" :entity="contextMenuTarget" :pos="contextMenuPos"
-      @close="closeContextMenu()" @action="handleContextAction" />
+    <MapPopup
+      :visible="popupVisible"
+      :entity="popupTarget"
+      :screen-pos="popupScreenPos"
+      :style="popupStyle"
+      @close="closePopup()"
+      @update:style="onPopupStyleChange"
+    />
+    <MapContextMenu
+      :visible="contextMenuVisible"
+      :entity="contextMenuTarget"
+      :pos="contextMenuPos"
+      @close="closeContextMenu()"
+      @action="handleContextAction"
+    />
   </div>
 </template>
 
@@ -22,10 +33,13 @@ import { createViewer } from '@/utils/cesium/viewer';
 import { useCesiumStore } from '@/stores/cesiumStore';
 import { useGeoPolygonStore } from '@/stores/geoPolygonStore';
 import { useGeoPathStore } from '@/stores/geoPathStore';
+import { useGeoShapeStore } from '@/stores/geoShapeStore';
 import { useGeoJsonStore } from '@/stores/geojsonStore';
 import { useMapInteraction } from '@/utils/cesium/shared/useMapInteraction';
 import type { ContextActionEvent } from '@/utils/cesium/shared/useMapInteraction';
 import { useEntityMove } from '@/utils/cesium/shared/useEntityMove';
+import { useShapeEditing } from '@/utils/cesium/shape/useShapeEditing';
+import type { ShapeEditContext } from '@/utils/cesium/shape/useShapeEditing';
 import type { PopupVariantKey } from './shared/popupVariants';
 import Toolbox from './Toolbox.vue';
 import CesiumNavigation from './CesiumNavigation.vue';
@@ -61,17 +75,95 @@ const entityMove = useEntityMove({
   onConfirm: (id: string, newPositions: Cartesian3[]) => {
     const polyStore = useGeoPolygonStore();
     const pathStore = useGeoPathStore();
+    const shapeStore = useGeoShapeStore();
     if (polyStore.isMoving) {
       polyStore.applyMovePositions(id, newPositions);
     } else if (pathStore.isMoving) {
       pathStore.applyMovePositions(id, newPositions);
+    } else if (shapeStore.isMoving) {
+      shapeStore.applyMove(id, newPositions);
     }
   },
   onCancel: () => {
     useGeoPolygonStore().cancelMove();
     useGeoPathStore().cancelMove();
+    useGeoShapeStore().cancelMove();
   },
 });
+
+/* ─── 形状编辑 ─── */
+const shapeEditing = useShapeEditing({
+  viewer: cesiumViewer,
+  onChange: (ctx: ShapeEditContext) => {
+    const store = useGeoShapeStore();
+    if (ctx.type === 'geoCircle' && ctx.center && ctx.radius) {
+      store.updateCircleEntity(ctx.entityId.replace('geoCircle_', ''), {
+        id: ctx.entityId.replace('geoCircle_', ''),
+        name: store.circles.find((c) => c.id === ctx.entityId.replace('geoCircle_', ''))?.name ?? '',
+        center: ctx.center,
+        radius: ctx.radius,
+        color: ctx.color,
+        visible: true,
+        createdAt: '',
+      });
+    } else if (ctx.type === 'geoRectangle' && ctx.bounds) {
+      store.updateRectangleEntity(ctx.entityId.replace('geoRectangle_', ''), {
+        id: ctx.entityId.replace('geoRectangle_', ''),
+        name: store.rectangles.find((r) => r.id === ctx.entityId.replace('geoRectangle_', ''))?.name ?? '',
+        west: ctx.bounds[0],
+        south: ctx.bounds[1],
+        east: ctx.bounds[2],
+        north: ctx.bounds[3],
+        color: ctx.color,
+        visible: true,
+        createdAt: '',
+      });
+    }
+  },
+  onExit: (ctx: ShapeEditContext) => {
+    const store = useGeoShapeStore();
+    store.isEditing = false;
+    if (ctx.type === 'geoCircle') {
+      const id = ctx.entityId.replace('geoCircle_', '');
+      store.circles = store.circles.map((c) =>
+        c.id === id ? { ...c, center: [...ctx.center!], radius: ctx.radius! } : c,
+      );
+    } else if (ctx.type === 'geoRectangle') {
+      const id = ctx.entityId.replace('geoRectangle_', '');
+      store.rectangles = store.rectangles.map((r) =>
+        r.id === id
+          ? { ...r, west: ctx.bounds![0], south: ctx.bounds![1], east: ctx.bounds![2], north: ctx.bounds![3] }
+          : r,
+      );
+    }
+  },
+});
+
+function startShapeEdit(type: 'geoCircle' | 'geoRectangle', id: string) {
+  const store = useGeoShapeStore();
+  if (type === 'geoCircle') {
+    const c = store.circles.find((x) => x.id === id);
+    if (!c) return;
+    store.isEditing = true;
+    shapeEditing.startEdit({
+      type: 'geoCircle',
+      entityId: `geoCircle_${id}`,
+      color: c.color,
+      center: [...c.center],
+      radius: c.radius,
+    });
+  } else {
+    const r = store.rectangles.find((x) => x.id === id);
+    if (!r) return;
+    store.isEditing = true;
+    shapeEditing.startEdit({
+      type: 'geoRectangle',
+      entityId: `geoRectangle_${id}`,
+      color: r.color,
+      bounds: [r.west, r.south, r.east, r.north],
+    });
+  }
+}
 
 onMounted(() => {
   if (cesiumContainer.value && !viewer.value) {
@@ -134,9 +226,13 @@ function handleContextAction(payload: ContextActionEvent) {
         useGeoPolygonStore().flyToPolygon(_entity.polygon.id);
       } else if (_entity.type === 'geoPath') {
         useGeoPathStore().flyToPath(_entity.path.id);
+      } else if (_entity.type === 'geoCircle') {
+        useGeoShapeStore().flyTo('geoCircle', _entity.circle.id);
+      } else if (_entity.type === 'geoRectangle') {
+        useGeoShapeStore().flyTo('geoRectangle', _entity.rectangle.id);
       } else if (_entity.type === 'geojson') {
         const v = toRaw(viewer.value);
-        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => { });
+        if (v && !v.isDestroyed()) v.flyTo(_entity.entity).catch(() => {});
       } else if (_entity.type === 'point') {
         const v = toRaw(viewer.value);
         if (v && !v.isDestroyed()) {
@@ -158,6 +254,10 @@ function handleContextAction(payload: ContextActionEvent) {
         useGeoPolygonStore().startEdit(_entity.polygon.id);
       } else if (_entity.type === 'geoPath') {
         useGeoPathStore().startEdit(_entity.path.id);
+      } else if (_entity.type === 'geoCircle') {
+        startShapeEdit('geoCircle', _entity.circle.id);
+      } else if (_entity.type === 'geoRectangle') {
+        startShapeEdit('geoRectangle', _entity.rectangle.id);
       } else if (_entity.type === 'geojson') {
         message.info('GeoJSON 要素不支持直接编辑顶点');
       }
@@ -184,14 +284,43 @@ function handleContextAction(payload: ContextActionEvent) {
           type: 'geoPath',
         });
         message.info('点击地图新位置以移动路径，右键/Esc取消');
+      } else if (_entity.type === 'geoCircle') {
+        const store = useGeoShapeStore();
+        const c = _entity.circle;
+        store.startMove('geoCircle', c.id);
+        entityMove.startMove({
+          id: c.id,
+          positions: [Cartesian3.fromDegrees(c.center[0], c.center[1], c.center[2] ?? 0)],
+          color: c.color,
+          type: 'geoCircle',
+          radius: c.radius,
+        });
+        message.info('点击地图新位置以移动圆形，右键/Esc取消');
+      } else if (_entity.type === 'geoRectangle') {
+        const store = useGeoShapeStore();
+        const r = _entity.rectangle;
+        const bounds: number[] = [r.west, r.south, r.east, r.north];
+        store.startMove('geoRectangle', r.id);
+        entityMove.startMove({
+          id: r.id,
+          positions: [Cartesian3.fromDegrees((r.west + r.east) / 2, (r.south + r.north) / 2, r.height ?? 0)],
+          color: r.color,
+          type: 'geoRectangle',
+          bounds,
+        });
+        message.info('点击地图新位置以移动矩形，右键/Esc取消');
       }
       break;
 
     case 'toggleVisibility':
       if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().toggleVisibility(_entity.polygon.id);
+        useGeoPolygonStore().toggleVisibility((_entity as any).polygon.id);
       } else if (_entity.type === 'geoPath') {
         useGeoPathStore().toggleVisibility(_entity.path.id);
+      } else if (_entity.type === 'geoCircle') {
+        useGeoShapeStore().toggleVisibility('geoCircle', _entity.circle.id);
+      } else if (_entity.type === 'geoRectangle') {
+        useGeoShapeStore().toggleVisibility('geoRectangle', _entity.rectangle.id);
       } else if (_entity.type === 'geojson') {
         useGeoJsonStore().toggleLayerVisibility(_entity.layer.id);
       }
@@ -199,15 +328,16 @@ function handleContextAction(payload: ContextActionEvent) {
 
     case 'analyzeSlope':
       if (_entity.type === 'geoPolygon') {
+        const poly = (_entity as any).polygon;
         const ps = useGeoPolygonStore();
-        ps.selectPolygon(_entity.polygon.id);
-        ps.analyzeSlope(_entity.polygon.id);
+        ps.selectPolygon(poly.id);
+        ps.analyzeSlope(poly.id);
       }
       break;
 
     case 'toggleClipping':
       if (entity.type === 'geoPolygon') {
-        useGeoPolygonStore().toggleClipping(_entity.polygon.id);
+        useGeoPolygonStore().toggleClipping((_entity as any).polygon.id);
       }
       break;
 
@@ -237,6 +367,10 @@ function handleContextAction(payload: ContextActionEvent) {
       } else if (_entity.type === 'geoPath') {
         useGeoPathStore().removePath(_entity.path.id);
         message.success(`已删除 ${_entity.path.name}`);
+      } else if (_entity.type === 'geoCircle') {
+        useGeoShapeStore().removeCircle(_entity.circle.id);
+      } else if (_entity.type === 'geoRectangle') {
+        useGeoShapeStore().removeRectangle(_entity.rectangle.id);
       } else if (_entity.type === 'geojson') {
         _entity.entity.show = false;
         message.success(`${_entity.feature.name} 已隐藏`);

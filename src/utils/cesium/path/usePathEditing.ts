@@ -64,10 +64,11 @@ export function usePathEditing(options: {
     if (!pos) return;
     const v = getViewer();
     if (!v) return;
-    const picked = v.scene.pick(pos);
-    if (picked?.id) {
-      const idx = editPointEntities.indexOf(picked.id);
-      if (idx !== -1) removeVertexByIndex(idx);
+    const pickedList = v.scene.drillPick(pos);
+    for (const p of pickedList) {
+      if (!p?.id) continue;
+      const idx = editPointEntities.indexOf(p.id);
+      if (idx !== -1) { removeVertexByIndex(idx); return; }
     }
   }
 
@@ -232,13 +233,15 @@ export function usePathEditing(options: {
     editingHandler.setInputAction((click: any) => {
       const v2 = getViewer();
       if (!v2) return;
-      const picked = v2.scene.pick(click.position);
-      if (picked?.id) {
-        const idx = editPointEntities.indexOf(picked.id);
+      const pickedList = v2.scene.drillPick(click.position);
+      for (const p of pickedList) {
+        if (!p?.id) continue;
+        const idx = editPointEntities.indexOf(p.id);
         if (idx !== -1) {
           dragState = { index: idx };
           dragStartPos = Cartesian3.clone(positions.value[idx]);
           v2.canvas.style.cursor = 'grabbing';
+          return;
         }
       }
     }, ScreenSpaceEventType.LEFT_DOWN);
@@ -302,11 +305,11 @@ export function usePathEditing(options: {
       if (dragState || justDragged) return;
       const v2 = getViewer();
       if (!v2) return;
-      const picked = v2.scene.pick(click.position);
-      if (picked?.id) {
-        const idx = editMidpointEntities.indexOf(picked.id);
+      const pickedList = v2.scene.drillPick(click.position);
+      for (const p of pickedList) {
+        if (!p?.id) continue;
+        const idx = editMidpointEntities.indexOf(p.id);
         if (idx !== -1) {
-          // 对于折线，中点 idx 对应边 positions[idx]→positions[idx+1]
           const next = idx + 1;
           if (next >= positions.value.length) return;
           const mid = Cartesian3.midpoint(positions.value[idx], positions.value[next], new Cartesian3());
@@ -314,6 +317,7 @@ export function usePathEditing(options: {
           triggerRef(positions as any);
           onChange?.();
           drawEditGraphics();
+          return;
         }
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
@@ -322,15 +326,15 @@ export function usePathEditing(options: {
     editingHandler.setInputAction((click: any) => {
       const v2 = getViewer();
       if (!v2) return;
-      const picked = v2.scene.pick(click.position);
-      if (picked?.id) {
-        const idx = editPointEntities.indexOf(picked.id);
+      const pickedList = v2.scene.drillPick(click.position);
+      for (const p of pickedList) {
+        if (!p?.id) continue;
+        const idx = editPointEntities.indexOf(p.id);
         if (idx !== -1) {
           removeVertexByIndex(idx);
           return;
         }
       }
-      // 点击空白处 → 退出编辑
       (onExitEdit ?? stopEdit)();
     }, ScreenSpaceEventType.RIGHT_CLICK);
   }
@@ -351,18 +355,19 @@ export function usePathEditing(options: {
       v.canvas.style.cursor = 'grabbing';
       return;
     }
-    const picked = v.scene.pick(pos);
-    if (!picked?.id) {
-      v.canvas.style.cursor = 'default';
-      return;
+    const pickedList = v.scene.drillPick(pos);
+    for (const p of pickedList) {
+      if (!p?.id) continue;
+      if (editPointEntities.indexOf(p.id) !== -1) {
+        v.canvas.style.cursor = 'grab';
+        return;
+      }
+      if (editMidpointEntities.indexOf(p.id) !== -1) {
+        v.canvas.style.cursor = 'pointer';
+        return;
+      }
     }
-    if (editPointEntities.indexOf(picked.id) !== -1) {
-      v.canvas.style.cursor = 'grab';
-    } else if (editMidpointEntities.indexOf(picked.id) !== -1) {
-      v.canvas.style.cursor = 'pointer';
-    } else {
-      v.canvas.style.cursor = 'default';
-    }
+    v.canvas.style.cursor = 'default';
   }
 
   /* ==============================

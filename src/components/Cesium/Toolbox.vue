@@ -1,6 +1,6 @@
 <!--
   components/Cesium/Toolbox.vue —— 左侧悬浮工具栏
-  三个入口（GeoJSON / 地形裁切 / 观测点），点击切换对应的 SidePanel
+  六个入口（GeoJSON / 形状 / 地形裁切 / 观测点 / 路径 / 多边形），点击切换对应的 SidePanel
 -->
 <template>
   <div class="toolbox">
@@ -18,6 +18,19 @@
             @click="toggleTool('geojson')"
           >
             <FileTextOutlined />
+          </Button>
+        </Tooltip>
+      </div>
+
+      <div class="toolbox-group">
+        <Tooltip title="形状绘制（圆形/矩形）" placement="right">
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'shape' ? 'primary' : 'default'"
+            aria-label="形状绘制"
+            @click="toggleTool('shape')"
+          >
+            <BorderOutlined />
           </Button>
         </Tooltip>
       </div>
@@ -76,6 +89,7 @@
     </div>
 
     <GeoJson :visible="activeTool === 'geojson'" @update:visible="onPanelClose" />
+    <GeoShape :visible="activeTool === 'shape'" @update:visible="onPanelClose" />
     <TerrainClip :visible="activeTool === 'clip'" @update:visible="onPanelClose" />
     <PointCreator :visible="activeTool === 'point'" @update:visible="onPanelClose" />
     <GeoPath :visible="activeTool === 'geoPath'" @update:visible="onPanelClose" />
@@ -93,8 +107,9 @@ import {
   EnvironmentOutlined,
   NodeIndexOutlined,
   AuditOutlined,
+  BorderOutlined,
 } from '@ant-design/icons-vue';
-import { GeoJson, TerrainClip, PointCreator, GeoPath, GeoPolygon } from './panels';
+import { GeoJson, GeoShape, TerrainClip, PointCreator, GeoPath, GeoPolygon } from './panels';
 
 defineOptions({ name: 'Toolbox' });
 

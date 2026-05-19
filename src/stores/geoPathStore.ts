@@ -193,8 +193,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
           linkedPath.positions = oldPositions.map((p) => Cartesian3.clone(p));
           linkedPath.measurements = calcPathDistances(linkedPath.positions);
           linkedPath.elevationProfile = null;
-          removePathEntities(id);
-          createPathEntity(linkedPath);
+          updatePathEntity(id, linkedPath.positions);
         }
       });
       // 撤销联动修改的其他多边形
@@ -206,7 +205,11 @@ export const useGeoPathStore = defineStore('geoPath', () => {
             poly.positions = oldPositions.map((p) => Cartesian3.clone(p));
             poly.measurements = calcPolygonMeasure(poly.positions);
             poly.vertexElevations = undefined;
-            polyStore.updatePolygonEntity(poly.id, poly.positions, `${poly.name}\n${formatArea(poly.measurements.area)}`);
+            polyStore.updatePolygonEntity(
+              poly.id,
+              poly.positions,
+              `${poly.name}\n${formatArea(poly.measurements.area)}`,
+            );
             if (poly.clipping) {
               polyStore.syncPolygonClipping();
             }
@@ -278,8 +281,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
         linkedPathUndoMap.value.set(p.id, oldPositions);
         p.measurements = calcPathDistances(p.positions);
         p.elevationProfile = null;
-        removePathEntities(p.id);
-        createPathEntity(p);
+        updatePathEntity(p.id, p.positions);
       }
     });
 
@@ -523,8 +525,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     const path = activePath.value;
     if (!path) return;
 
-    removePathEntities(path.id);
-    createPathEntity(path); // 重建（无剖面时单色）
+    updatePathEntity(path.id, path.positions);
     path.elevationProfile = null; // 标记为过期
   }
 
@@ -535,8 +536,12 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     if (path) {
       path.measurements = calcPathDistances(path.positions);
       if (!isEditing.value) {
-        removePathEntities(path.id);
-        createPathEntity(path);
+        if (path.elevationProfile) {
+          removePathEntities(path.id);
+          createPathEntity(path);
+        } else {
+          updatePathEntity(path.id, path.positions);
+        }
       }
     }
     if (editing.isEditing.value) editing.redraw();
@@ -549,8 +554,12 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     if (path) {
       path.measurements = calcPathDistances(path.positions);
       if (!isEditing.value) {
-        removePathEntities(path.id);
-        createPathEntity(path);
+        if (path.elevationProfile) {
+          removePathEntities(path.id);
+          createPathEntity(path);
+        } else {
+          updatePathEntity(path.id, path.positions);
+        }
       }
     }
     if (editing.isEditing.value) editing.redraw();
@@ -590,9 +599,8 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     path.measurements = calcPathDistances(newPositions);
     path.elevationProfile = null;
 
-    // 重建 Cesium entity
-    removePathEntities(id);
-    createPathEntity(path);
+    // 重建 Cesium entity（剖面已清空，原地更新即可）
+    updatePathEntity(id, path.positions);
 
     history.pushHistory(); // 快照移动后状态（支持重做）
 
@@ -624,12 +632,33 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     });
   }
 
+  /** 原地更新路径实体的顶点位置，若只有 _seg_N 实体则回退到全量重建 */
+  function updatePathEntity(id: string, newPositions: Cartesian3[]) {
+    const v = toRaw(viewer.value);
+    if (!isValidViewer(v)) return;
+    const entity = v.entities.getById(`geoPath_${id}_main`);
+    if (entity) {
+      (entity.polyline as any).positions = [...newPositions];
+      return;
+    }
+    // 无 _main 实体（如之前有高程剖面的情况），回退到全量重建
+    const path = paths.value.find((p) => p.id === id);
+    if (path) {
+      removePathEntities(id);
+      createPathEntity(path);
+    }
+  }
+
   /** 重建指定路径的 Cesium entity（用于联动编辑等外部触发） */
   function refreshPathEntity(id: string) {
     const path = paths.value.find((p) => p.id === id);
     if (!path) return;
-    removePathEntities(id);
-    createPathEntity(path);
+    if (path.elevationProfile) {
+      removePathEntities(id);
+      createPathEntity(path);
+    } else {
+      updatePathEntity(id, path.positions);
+    }
   }
 
   function createPathEntity(path: GeoPath) {

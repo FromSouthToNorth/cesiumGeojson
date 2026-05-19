@@ -74,6 +74,8 @@ export interface UseBaseDrawingOptions {
   onCancel?: () => void;
   /** 状态变化时触发（加点、撤销、鼠标移动后），由包装器计算具体测量值 */
   onLiveUpdate?: (positions: Cartesian3[], previewPos: Cartesian3 | null) => void;
+  /** 自定义双击行为，返回 'finish' 完成绘制 / 'undo' 撤销顶点 / void 走默认逻辑 */
+  onDoubleClick?: (position: Cartesian3, lastVertex: Cartesian3) => 'finish' | 'undo' | void;
 }
 
 export interface UseBaseDrawingReturn {
@@ -102,6 +104,7 @@ export function useBaseDrawing(options: UseBaseDrawingOptions): UseBaseDrawingRe
     onFinish,
     onCancel,
     onLiveUpdate,
+    onDoubleClick,
   } = options;
 
   const isDrawing = ref(false);
@@ -280,35 +283,42 @@ export function useBaseDrawing(options: UseBaseDrawingOptions): UseBaseDrawingRe
       finishDraw();
     }, ScreenSpaceEventType.RIGHT_CLICK);
 
-    // 左键双击：完成绘制（无修饰键）
-    handler.setInputAction((movement: any) => {
-      if (positions.value.length < minVertices) return;
+    // 双击回调的分发逻辑
+    function handleDoubleClick(movement: any) {
       const v2 = getViewer();
       if (!v2) return;
       const cartesian = pickGlobe(v2, movement.position);
-      if (cartesian) {
-        const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
-        const last = positions.value[positions.value.length - 1];
-        if (Cartesian3.distance(finalPos, last) < 5) {
+      if (!cartesian) return;
+      const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
+      const last = positions.value[positions.value.length - 1];
+
+      if (onDoubleClick) {
+        const action = onDoubleClick(finalPos, last);
+        if (action === 'finish') {
           finishDraw();
+          return;
+        }
+        if (action === 'undo') {
+          undoLastVertex();
+          return;
         }
       }
+
+      // 默认行为：距末点 < 5m 时完成
+      if (positions.value.length >= minVertices && Cartesian3.distance(finalPos, last) < 5) {
+        finishDraw();
+      }
+    }
+
+    // 左键双击（无修饰键）
+    handler.setInputAction((movement: any) => {
+      handleDoubleClick(movement);
     }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
-    // Shift + 左键双击：同样需要完成绘制
+    // Shift + 左键双击
     handler.setInputAction(
       (movement: any) => {
-        if (positions.value.length < minVertices) return;
-        const v2 = getViewer();
-        if (!v2) return;
-        const cartesian = pickGlobe(v2, movement.position);
-        if (cartesian) {
-          const finalPos = applySnapping(movement.position, cartesian, shiftPressed);
-          const last = positions.value[positions.value.length - 1];
-          if (Cartesian3.distance(finalPos, last) < 5) {
-            finishDraw();
-          }
-        }
+        handleDoubleClick(movement);
       },
       ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
       KeyboardEventModifier.SHIFT,

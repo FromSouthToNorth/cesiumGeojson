@@ -10,12 +10,7 @@
     </Button>
     <div class="link-edit-row">
       <span class="link-edit-label">联动编辑</span>
-      <Switch
-        v-model:checked="checked"
-        size="small"
-        :checked-children="'开'"
-        :un-checked-children="'关'"
-      />
+      <Switch v-model:checked="checked" size="small" :checked-children="'开'" :un-checked-children="'关'" />
     </div>
     <div class="edit-toolbar">
       <Button size="small" :disabled="!canUndo" @click="$emit('undo')">撤销</Button>
