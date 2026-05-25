@@ -49,7 +49,8 @@ src/
 │   │   ├── TerrainClip.vue    # Terrain clipping panel
 │   │   ├── PointCreator.vue   # Observation point creator
 │   │   ├── GeoPath.vue        # Geological path planning & measurement
-│   │   └── GeoPolygon.vue     # Polygon geological survey (area & perimeter, slope, clipping)
+│   │   ├── GeoPolygon.vue     # Polygon geological survey (area & perimeter, slope, clipping)
+│   │   └── FlightTrack.vue    # DJI flight track playback & analysis
 │   └── shared/                # Reusable sub-components
 │       ├── MapPopup.vue       # Left-click popup with SVG leader line
 │       ├── MapContextMenu.vue # Right-click context menu (per entity type)
@@ -65,12 +66,14 @@ src/
 │   ├── terrainClipStore.ts    # Terrain clipping coordinator (composes 4 sub-modules)
 │   ├── geoPathStore.ts        # Geological path CRUD, drawing, measurement
 │   ├── geoPolygonStore.ts     # Multi-polygon CRUD, drawing, area/perimeter, slope analysis, terrain clipping, GeoJSON export
+│   ├── flightTrackStore.ts    # DJI flight track parsing, Cesium entity rendering, playback animation
 │   ├── themeStore.ts          # Light/dark theme (localStorage persisted)
 │   └── appStore.ts            # Global loading state
 ├── types/
 │   ├── geoPath.ts             # GeoPath, ElevationProfile, GeoPathType types
 │   ├── geoPolygon.ts          # GeoPolygon, GeoPolygonMeasureResult, GeoPolygonJSON
-│   └── slopeAnalysis.ts       # SlopeGridPoint, SlopeAnalysisResult (split from geoPolygon.ts)
+│   ├── slopeAnalysis.ts       # SlopeGridPoint, SlopeAnalysisResult (split from geoPolygon.ts)
+│   └── flightTrack.ts         # FlightTrack, FlightTrackFrame, PlaybackState types
 ├── utils/
 │   ├── cesium/
 │   │   ├── viewer.ts          # Viewer factory (Ion token, terrain, loading state)
@@ -123,6 +126,12 @@ src/
   Cesium relies on `instanceof` and `===` identity checks internally — a Proxy breaks both.
   Whenever extracting `Viewer` from a ref/computed to call Cesium APIs, always unwrap
   with `toRaw()`. Never call Cesium methods directly on `viewer.value` without `toRaw`.
+- **Use `markRaw` for Cesium objects stored in reactive state**: `DataSource`, `Entity`, and other
+  Cesium instances stored in Pinia refs / reactive arrays must be marked with `markRaw()`
+  immediately after creation. Vue's deep reactive will otherwise wrap them in Proxies, breaking
+  Cesium's internal `===` identity checks in collections (`DataSourceCollection.remove()` etc).
+  Example: `markRaw(dataSource); markRaw(entity);` in `loadGeoJsonData` before pushing to arrays.
+  Once `markRaw`'d, these objects can be accessed directly without nested `toRaw()` calls.
 - Check validity before use: `v && !v.isDestroyed()` (extract to `isValidViewer(v)` helper for frequent use)
 - Cross-store access: call `useXxxStore()` inside store functions
 - Return an object of refs/computed/functions at the end
@@ -270,6 +279,32 @@ Per-polygon terrain clipping toggleable from the detail panel:
 - `clippingInverse` — global toggle to show terrain **outside** the polygon instead of inside (red highlight when active)
 - Inverse button disabled when no polygon has clipping enabled
 - Only one `ClippingPolygonCollection` can be active on the globe — conflicts with `terrainClipStore` if both used simultaneously
+
+### FlightTrack Architecture
+
+DJI flight track playback uses a lightweight store with Cesium entity management and RAF-based animation:
+
+```
+flightTrackStore
+├── loadFromUrl / loadFromFile   — Parse DJI json_result.json (summary + info.frameTimeStates)
+├── createTrackEntities          — Render: segment polylines (height-colored), start/end markers, aircraft point, direction billboard
+├── removeTrackEntities          — Remove all entities by prefix filter
+├── startPlayback / stopPlayback — RAF loop with speed control
+├── tickPlayback                 — Advance frame index, update aircraft position/orientation, camera follow
+├── updateAircraftPosition       — Set entity position + HPR quaternion, update billboard rotation
+├── seekPlayback                 — Jump to progress (0-1)
+└── toggleVisibility / flyToTrack — Per-track show/hide and camera flyTo
+```
+
+Key details:
+- **Data source**: DJI `json_result.json` with `summary` (aircraft metadata) and `info.frameTimeStates[]` (per-frame telemetry).
+- **Altitude handling**: DJI's `flightControllerState.altitude` is **relative height** (above takeoff). Absolute altitude = `relativeHeight + takeoffLocationAltitude`. `height` field stores relative; `altitude` stores absolute.
+- **Entity ID prefix**: `flightTrack_${trackId}_{suffix}` where suffix = `seg_${i}`, `start`, `end`, `aircraft`, `direction`.
+- **Playback**: RAF loop driven by `performance.now()`. `playbackSpeed` multiplies real elapsed time. Pauses freeze via `playbackPausedTime` offset.
+- **Camera follow**: `playbackFollowCamera` toggles automatic camera tracking behind aircraft (offset by heading, altitude + 30m, -35° pitch).
+- **Height-colored track**: Each segment gets a color from green (low) → yellow → red (high) based on normalized altitude within the track.
+- **Direction billboard**: Canvas-rendered arrow rotated by `-yaw` with `alignedAxis: Cartesian3.UNIT_Z`.
+- **Track removal**: `removeTrack` stops playback, removes entities, filters from `tracks` array, falls back active track to first remaining.
 
 ### Coding Style
 - Files start with `/* ===== Header ===== */` describing file responsibility (in Chinese for domain code, English for infra)

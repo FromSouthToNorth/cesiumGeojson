@@ -5,3 +5,4 @@ export { default as PointCreator } from './PointCreator.vue';
 export { default as GeoPath } from './GeoPath.vue';
 export { default as GeoPolygon } from './GeoPolygon.vue';
 export { default as GeoShape } from './GeoShape.vue';
+export { default as FlightTrack } from './FlightTrack.vue';

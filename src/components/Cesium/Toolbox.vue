@@ -1,6 +1,6 @@
 <!--
   components/Cesium/Toolbox.vue —— 左侧悬浮工具栏
-  六个入口（GeoJSON / 形状 / 地形裁切 / 观测点 / 路径 / 多边形），点击切换对应的 SidePanel
+  七个入口（GeoJSON / 形状 / 地形裁切 / 观测点 / 路径 / 多边形 / 飞行轨迹），点击切换对应的 SidePanel
 -->
 <template>
   <div class="toolbox">
@@ -86,6 +86,19 @@
           </Button>
         </Tooltip>
       </div>
+
+      <div class="toolbox-group">
+        <Tooltip title="飞行轨迹" placement="right">
+          <Button
+            class="tool-btn"
+            :type="activeTool === 'flightTrack' ? 'primary' : 'default'"
+            aria-label="飞行轨迹"
+            @click="toggleTool('flightTrack')"
+          >
+            <RocketOutlined />
+          </Button>
+        </Tooltip>
+      </div>
     </div>
 
     <GeoJson :visible="activeTool === 'geojson'" @update:visible="onPanelClose" />
@@ -94,6 +107,7 @@
     <PointCreator :visible="activeTool === 'point'" @update:visible="onPanelClose" />
     <GeoPath :visible="activeTool === 'geoPath'" @update:visible="onPanelClose" />
     <GeoPolygon :visible="activeTool === 'geoPolygon'" @update:visible="onPanelClose" />
+    <FlightTrack :visible="activeTool === 'flightTrack'" @update:visible="onPanelClose" />
   </div>
 </template>
 
@@ -108,8 +122,9 @@ import {
   NodeIndexOutlined,
   AuditOutlined,
   BorderOutlined,
+  RocketOutlined,
 } from '@ant-design/icons-vue';
-import { GeoJson, GeoShape, TerrainClip, PointCreator, GeoPath, GeoPolygon } from './panels';
+import { GeoJson, GeoShape, TerrainClip, PointCreator, GeoPath, GeoPolygon, FlightTrack } from './panels';
 
 defineOptions({ name: 'Toolbox' });
 

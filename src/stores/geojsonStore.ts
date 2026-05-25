@@ -3,7 +3,7 @@
  * 支持：多图层 CRUD、要素属性查看、显隐切换、定位飞行，默认加载 data/ 数据
  * ============================== */
 
-import { ref, computed, toRaw, watch } from 'vue';
+import { ref, computed, toRaw, watch, markRaw } from 'vue';
 import { defineStore } from 'pinia';
 import { GeoJsonDataSource, Color } from 'cesium';
 import { message } from 'ant-design-vue';
@@ -135,41 +135,47 @@ export const useGeoJsonStore = defineStore('geojson', () => {
   function removeLayer(id: string) {
     const idx = layers.value.findIndex((l) => l.id === id);
     if (idx === -1) return;
-    const target = toRaw(layers.value[idx]);
+    const target = layers.value[idx];
+    const ds = target.dataSource; // dataSource 已 markRaw，不会被 Vue 代理
 
     // 先移除 UI 层，避免 Cesium 同步销毁阻塞界面
     layers.value.splice(idx, 1);
 
     // 延迟销毁 Cesium 数据源，让浏览器先完成 UI 重绘
     const v = toRaw(viewer.value);
-    if (v && !v.isDestroyed()) {
-      setTimeout(() => {
+    if (v && !v.isDestroyed() && ds) {
+      requestAnimationFrame(() => {
         try {
-          v.dataSources.remove(target.dataSource, true);
+          const ok = v.dataSources.remove(ds, true);
+          if (!ok) console.warn('Cesium dataSources.remove 返回 false，数据源可能未被移除:', ds.name);
         } catch (err) {
           console.error('移除 Cesium 数据源失败:', err);
         }
-      }, 0);
+      });
     }
   }
 
   /** 移除所有图层 */
   function removeAllLayers() {
     if (layers.value.length === 0) return;
-    const targets = layers.value.map((l) => toRaw(l));
+    // dataSource 已 markRaw，直接收集原始引用，然后一次性清空 UI
+    const dataSources = layers.value
+      .map((l) => l.dataSource)
+      .filter(Boolean);
     layers.value = [];
 
     const v = toRaw(viewer.value);
-    if (v && !v.isDestroyed()) {
-      setTimeout(() => {
-        for (const target of targets) {
+    if (v && !v.isDestroyed() && dataSources.length > 0) {
+      requestAnimationFrame(() => {
+        for (const ds of dataSources) {
           try {
-            v.dataSources.remove(target.dataSource, true);
+            const ok = v.dataSources.remove(ds, true);
+            if (!ok) console.warn('Cesium dataSources.remove 返回 false，数据源可能未被移除:', ds.name);
           } catch (err) {
             console.error('移除 Cesium 数据源失败:', err);
           }
         }
-      }, 0);
+      });
     }
   }
 
@@ -179,7 +185,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     if (target) {
       const v = toRaw(viewer.value);
       if (v && !v.isDestroyed()) {
-        v.flyTo(toRaw(target).dataSource).catch(() => {});
+        v.flyTo(target.dataSource).catch(() => {});
       }
     }
   }
@@ -189,8 +195,8 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     const layer = layers.value.find((l) => l.id === id);
     if (layer) {
       layer.show = !layer.show;
-      // 仅对 Cesium 对象用 toRaw，确保 show 变更触发 Vue 响应式
-      toRaw(layer).dataSource.show = layer.show;
+      // dataSource 已 markRaw，直接访问即可
+      layer.dataSource.show = layer.show;
     }
   }
 
@@ -208,7 +214,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
   function flyToFeature(entity: any) {
     const v = toRaw(viewer.value);
     if (v && !v.isDestroyed()) {
-      v.flyTo(toRaw(entity)).catch(() => {});
+      v.flyTo(entity).catch(() => {});
     }
   }
 
@@ -225,11 +231,13 @@ export const useGeoJsonStore = defineStore('geojson', () => {
     const c = color ?? pickColor(layers.value.length);
     const dataSource = await GeoJsonDataSource.load(json, options);
     dataSource.name = name;
+    markRaw(dataSource); // Cesium 对象不能被 Vue 代理，否则 instanceof / === 会失效
 
     // 遍历实体，应用颜色并提取要素信息
     const features: GeoJsonFeature[] = [];
     const entities = dataSource.entities.values;
     entities.forEach((entity: any, idx: number) => {
+      markRaw(entity); // 同上，阻止 Vue 代理 Cesium Entity
       applyEntityColor(entity, c);
       const featureName = extractFeatureName(entity, idx);
       const properties = extractFeatureProperties(entity);
