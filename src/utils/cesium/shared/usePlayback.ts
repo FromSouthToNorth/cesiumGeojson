@@ -353,7 +353,7 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     v.clock.shouldAnimate = true;
 
     createEntities(track);
-    attachOnTick(v);
+    // attachOnTick(v);
 
     isPlaying.value = true;
     isPaused.value = false;
