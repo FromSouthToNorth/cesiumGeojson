@@ -11,7 +11,14 @@ import {
   Math as CesiumMath,
   JulianDate,
   SampledPositionProperty,
+  SampledProperty,
+  Quaternion,
   ClockRange,
+  HeadingPitchRoll,
+  Transforms,
+  Ellipsoid,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
 } from 'cesium';
 import { isValidViewer } from './common';
 
@@ -123,6 +130,7 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
   let activeTrackTotalTime = 0;
   let activeKeyframes: PlaybackKeyframe[] = [];
   let sampledPosition: SampledPositionProperty | null = null;
+  let sampledOrientation: SampledProperty | null = null;
   let startTime: JulianDate | null = null;
   let stopTime: JulianDate | null = null;
   let onTickRemoveCallback: (() => void) | null = null;
@@ -133,6 +141,10 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
   let lastKeyframeIndex = 0;
   let lastTrailIndex = -1;
   let lastHeading: number | undefined = undefined;
+  let lastUiUpdateTime = 0;
+  const UI_UPDATE_INTERVAL = 500; // ms，限制 Vue 响应式更新频率，与 FlightTrack store 同步
+  let trailPositions: Cartesian3[] = []; // 预分配，避免每次重建数组
+  let clickHandler: ScreenSpaceEventHandler | null = null; // 暂停时点击无人机恢复播放
 
   /* ===== 实体 ID 工具 ===== */
   function entityId(suffix: string) {
@@ -156,6 +168,8 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     lastKeyframeIndex = 0;
     lastTrailIndex = -1;
     lastHeading = undefined;
+    trailPositions = [];
+    sampledOrientation = null;
   }
 
   /* ===== 实体创建 ===== */
@@ -165,19 +179,19 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
 
     const first = track.keyframes[0];
     const firstPos = first.position;
-    const markerColor = Color.fromCssColorString(track.color ?? '#1890FF');
 
-    // aircraft point
+    // 无人机 3D 模型（orientation 用 SampledProperty 预采样，Cesium 自动插值，平滑无跳变）
     v.entities.add({
       id: entityId('aircraft'),
       position: sampledPosition!,
-      point: {
-        pixelSize: 16,
-        color: markerColor,
-        outlineColor: Color.WHITE,
-        outlineWidth: 2,
+      orientation: sampledOrientation!,
+      model: {
+        uri: '/models/drone.glb',
+        scale: 1,
+        minimumPixelSize: 32,
         heightReference: opts.clampToGround ? 1 : 0,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        silhouetteColor: Color.fromCssColorString('#FF4D4F'),
+        silhouetteSize: 1,
       },
     });
 
@@ -198,12 +212,13 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
       });
     }
 
-    // trail polyline
+    // trail polyline —— 预分配数组，只追加不重建，避免 Cesium 每帧重建 geometry
     if (opts.showTrail) {
+      trailPositions = [firstPos];
       v.entities.add({
         id: entityId('trail'),
         polyline: {
-          positions: [firstPos, firstPos],
+          positions: trailPositions,
           width: 4,
           material: Color.fromCssColorString(opts.trailColor).withAlpha(0.6),
           clampToGround: opts.clampToGround,
@@ -225,14 +240,32 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
   /* ===== 构建 SampledPositionProperty ===== */
   function buildSampledProperties(track: PlaybackTrack) {
     const sp = new SampledPositionProperty();
+    const so = new SampledProperty(Quaternion);
     const st = JulianDate.fromDate(new Date(0));
+
+    // ENU 坐标系：Entity.orientation 使用 ENU，与 NED 的 HPR 定义不同
+    // NED 中 pitch 绕横向轴(East)、roll 绕纵向轴(North)
+    // ENU 中 pitch 绕纵向轴(North)、roll 绕横向轴(East)
+    // 因此 DJI 的 NED 姿态需要映射：heading=yaw, pitch=roll, roll=-pitch
+    const enuTransform = Transforms.localFrameToFixedFrameGenerator('east', 'north');
 
     for (const kf of track.keyframes) {
       const t = JulianDate.addSeconds(st, kf.time, new JulianDate());
       sp.addSample(t, kf.position);
+
+      const hpr = new HeadingPitchRoll(
+        CesiumMath.toRadians(kf.heading ?? 0),
+        CesiumMath.toRadians(kf.roll ?? 0),
+        CesiumMath.toRadians(-(kf.pitch ?? 0)),
+      );
+      so.addSample(
+        t,
+        Transforms.headingPitchRollQuaternion(kf.position, hpr, Ellipsoid.WGS84, enuTransform),
+      );
     }
 
     sampledPosition = sp;
+    sampledOrientation = so;
     startTime = st;
     stopTime = JulianDate.addSeconds(st, track.totalTime, new JulianDate());
   }
@@ -256,34 +289,38 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     return n - 1;
   }
 
-  /* ===== 同步播放状态 ===== */
-  function syncPlaybackState(v: any, elapsed: number) {
+  /* ===== 同步 Cesium 实体（每 tick 执行，与渲染帧同步） ===== */
+  function syncEntities(_v: any, elapsed: number) {
     const clamped = Math.max(0, Math.min(activeTrackTotalTime, elapsed));
-    currentTime.value = clamped;
-    progress.value = activeTrackTotalTime > 0 ? clamped / activeTrackTotalTime : 0;
-    currentDistance.value = clamped * opts.baseSpeed;
-
     const idx = findKeyframeIndex(clamped);
     const nextIdx = Math.min(idx + 1, activeKeyframes.length - 1);
 
-    // 更新尾迹（只在索引变化时重设）
-    if (cachedTrailEntity && nextIdx !== lastTrailIndex) {
-      lastTrailIndex = nextIdx;
-      const trailPositions: Cartesian3[] = [];
-      for (let i = 0; i <= nextIdx; i++) {
+    // 更新尾迹：只追加新点，避免每次重建整个数组 + Cesium geometry
+    if (cachedTrailEntity && nextIdx > lastTrailIndex) {
+      for (let i = lastTrailIndex + 1; i <= nextIdx; i++) {
         trailPositions.push(activeKeyframes[i].position);
       }
+      lastTrailIndex = nextIdx;
       (cachedTrailEntity.polyline as any).positions = trailPositions;
     }
 
-    // 更新方向箭头（只在 heading 变化时更新）
-    if (cachedDirEntity && cachedDirEntity.billboard) {
-      const kf = activeKeyframes[idx];
-      if (kf?.heading !== undefined && kf.heading !== lastHeading) {
+    const kf = activeKeyframes[idx];
+
+    // 更新方向箭头（每 tick 更新，确保与无人机模型姿态同步）
+    if (cachedDirEntity && cachedDirEntity.billboard && kf) {
+      if (kf.heading !== undefined && kf.heading !== lastHeading) {
         lastHeading = kf.heading;
         (cachedDirEntity.billboard as any).rotation = CesiumMath.toRadians(-kf.heading);
       }
     }
+  }
+
+  /* ===== 同步 Vue ref 状态（限制频率，避免 UI 组件每帧重渲染） ===== */
+  function syncUiState(elapsed: number) {
+    const clamped = Math.max(0, Math.min(activeTrackTotalTime, elapsed));
+    currentTime.value = clamped;
+    progress.value = activeTrackTotalTime > 0 ? clamped / activeTrackTotalTime : 0;
+    currentDistance.value = clamped * opts.baseSpeed;
   }
 
   /* ===== Clock.onTick 驱动（与 Cesium 渲染同步） ===== */
@@ -298,11 +335,23 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
       if (!startTime || !stopTime) return;
 
       const elapsed = JulianDate.secondsDifference(clock.currentTime, startTime);
-      syncPlaybackState(v, elapsed);
 
+      // 结束检测每 tick 执行，不能漏
       if (JulianDate.greaterThanOrEquals(clock.currentTime, stopTime)) {
-        syncPlaybackState(v, activeTrackTotalTime);
+        syncEntities(v, activeTrackTotalTime);
+        syncUiState(activeTrackTotalTime);
         stopPlayback();
+        return;
+      }
+
+      // Cesium 实体（尾迹、方向箭头）每 tick 更新，与渲染帧同步
+      syncEntities(v, elapsed);
+
+      // Vue ref 限制更新频率，避免 UI 组件每帧重渲染
+      const now = performance.now();
+      if (now - lastUiUpdateTime >= UI_UPDATE_INTERVAL) {
+        lastUiUpdateTime = now;
+        syncUiState(elapsed);
       }
     });
   }
@@ -353,7 +402,19 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     v.clock.shouldAnimate = true;
 
     createEntities(track);
-    // attachOnTick(v);
+    attachOnTick(v);
+
+    // 暂停时点击无人机恢复播放
+    if (!clickHandler) {
+      clickHandler = new ScreenSpaceEventHandler(v.scene.canvas);
+      clickHandler.setInputAction((click: any) => {
+        if (!isPlaying.value || !isPaused.value) return;
+        const picked = v.scene.pick(click.position);
+        if (picked?.id?.id === entityId('aircraft')) {
+          resumePlayback();
+        }
+      }, ScreenSpaceEventType.LEFT_CLICK);
+    }
 
     isPlaying.value = true;
     isPaused.value = false;
@@ -411,6 +472,11 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
 
     detachOnTick();
 
+    if (clickHandler) {
+      clickHandler.destroy();
+      clickHandler = null;
+    }
+
     isPlaying.value = false;
     isPaused.value = false;
     progress.value = 0;
@@ -450,7 +516,7 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
 
     if (cachedTrailEntity) {
       lastTrailIndex = nextIdx;
-      const trailPositions: Cartesian3[] = [];
+      trailPositions.length = 0;
       for (let i = 0; i <= nextIdx; i++) {
         trailPositions.push(activeKeyframes[i].position);
       }
@@ -504,6 +570,7 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     seekPlayback,
     setPlaybackSpeed,
     togglePlaybackFollowCamera,
+    toggleTrail,
     destroy,
   };
 }

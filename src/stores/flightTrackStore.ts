@@ -3,7 +3,7 @@
  * 解析 frames.json，在 Cesium 中绘制轨迹、播放动画、显示姿态
  * ============================== */
 
-import { ref, computed, toRaw, watch, markRaw } from 'vue';
+import { ref, computed, toRaw, watch, markRaw, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import {
   Cartesian3,
@@ -195,8 +195,8 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
   const activeTrackId = ref<string | null>(null);
   const isLoading = ref(false);
 
-  /** 播放状态（与 UI 兼容的结构） */
-  const playback = ref<PlaybackState>({
+  /** 播放状态（shallowRef：避免 Vue 深度代理触发大量 UI 重渲染） */
+  const playback = shallowRef<PlaybackState>({
     isPlaying: false,
     isPaused: false,
     currentTime: 0,
@@ -204,22 +204,38 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     currentFrameIndex: 0,
   });
 
-  /* ── 同步 pb 状态到 playback ref ── */
+  /* ── 同步 pb 状态到 playback shallowRef ──
+   * 规则：
+   * 1. isPlaying / isPaused 立即同步（按钮状态需要即时反馈）
+   * 2. currentTime / progress / currentFrameIndex 限制 500ms 同步一次
+   *    避免 FlightTrack.vue 的 currentFrame computed + 大量 DOM 每 200ms 重渲染
+   */
+  let lastPlaybackSync = 0;
+  const PLAYBACK_SYNC_INTERVAL = 500;
+
   watch(pb.isPlaying, (v) => {
-    playback.value.isPlaying = v;
+    playback.value = { ...playback.value, isPlaying: v };
   });
   watch(pb.isPaused, (v) => {
-    playback.value.isPaused = v;
+    playback.value = { ...playback.value, isPaused: v };
   });
-  watch(pb.progress, (v) => {
-    playback.value.progress = v;
-  });
+
   watch(pb.currentTime, (v) => {
-    playback.value.currentTime = v;
+    const now = performance.now();
     const track = activeTrack.value;
+    let frameIdx = playback.value.currentFrameIndex;
     if (track) {
-      const interval = findFrameInterval(track.frames, v);
-      playback.value.currentFrameIndex = interval.index;
+      frameIdx = findFrameInterval(track.frames, v).index;
+    }
+
+    if (now - lastPlaybackSync >= PLAYBACK_SYNC_INTERVAL) {
+      lastPlaybackSync = now;
+      playback.value = {
+        ...playback.value,
+        currentTime: v,
+        progress: pb.progress.value,
+        currentFrameIndex: frameIdx,
+      };
     }
   });
 
@@ -302,7 +318,7 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
         colors,
         colorsPerVertex: true,
         clampToGround: false,
-      },
+      } as any,
     });
 
     // 2. 起点标记
@@ -404,7 +420,6 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     pb.startPlayback(toPlaybackTrack(track), {
       speed: pb.speed.value,
       followCamera: pb.followCamera.value,
-      showTrail: false,
     });
   }
 
