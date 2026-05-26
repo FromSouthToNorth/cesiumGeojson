@@ -295,6 +295,7 @@ export function usePathEditing(options: {
         } else {
           onChange?.();
         }
+        triggerRef(positions as any);
         drawEditGraphics();
         snapping?.invalidateCache();
       }

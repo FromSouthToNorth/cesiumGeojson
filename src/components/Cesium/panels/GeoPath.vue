@@ -177,7 +177,7 @@
             <!-- ── 轨迹播放 ── -->
             <div class="detail-section">
               <div class="detail-title">轨迹播放</div>
-              <template v-if="!store.playbackIsPlaying">
+              <template v-if="!store.playback.isPlaying">
                 <Button size="small" type="primary" @click.stop="store.startPlayback(path)">
                   <CaretRightOutlined />
                   播放轨迹
@@ -186,19 +186,19 @@
               <template v-else>
                 <div class="playback-info-row">
                   <span
-                    >已行驶 {{ store.playbackDistance.toFixed(1) }} / {{ path.measurements.total.toFixed(1) }} m</span
+                    >已行驶 {{ store.playback.currentDistance.toFixed(1) }} / {{ path.measurements.total.toFixed(1) }} m</span
                   >
                 </div>
                 <div class="playback-info-row">
                   <span
-                    >{{ formatTime(store.playbackDuration) }} / {{ formatTime(store.playbackEstimatedDuration) }}</span
+                    >{{ formatTime(store.playback.currentTime) }} / {{ formatTime(path.measurements.total / 50) }}</span
                   >
                 </div>
                 <Slider
                   :min="0"
                   :max="1"
                   :step="0.001"
-                  :value="store.playbackProgress"
+                  :value="store.playback.progress"
                   class="playback-slider"
                   @change="(v: any) => store.seekPlayback(v as number)"
                 />
@@ -207,7 +207,7 @@
                     <FastBackwardOutlined />
                   </Button>
                   <Button size="small" type="primary" @click="togglePlayPause">
-                    <PauseOutlined v-if="!store.playbackIsPaused" />
+                    <PauseOutlined v-if="!store.playback.isPaused" />
                     <CaretRightOutlined v-else />
                   </Button>
                   <Button size="small" @click="store.stopPlayback()">
@@ -228,25 +228,25 @@
                   <span class="pb-label">速度</span>
                   <div class="pb-btn-group">
                     <Button
-                      :type="store.playbackSpeed === 0.5 ? 'primary' : 'default'"
+                      :type="store.playback.speed === 0.5 ? 'primary' : 'default'"
                       size="small"
                       @click="store.setPlaybackSpeed(0.5)"
                       >0.5x</Button
                     >
                     <Button
-                      :type="store.playbackSpeed === 1 ? 'primary' : 'default'"
+                      :type="store.playback.speed === 1 ? 'primary' : 'default'"
                       size="small"
                       @click="store.setPlaybackSpeed(1)"
                       >1x</Button
                     >
                     <Button
-                      :type="store.playbackSpeed === 2 ? 'primary' : 'default'"
+                      :type="store.playback.speed === 2 ? 'primary' : 'default'"
                       size="small"
                       @click="store.setPlaybackSpeed(2)"
                       >2x</Button
                     >
                     <Button
-                      :type="store.playbackSpeed === 4 ? 'primary' : 'default'"
+                      :type="store.playback.speed === 4 ? 'primary' : 'default'"
                       size="small"
                       @click="store.setPlaybackSpeed(4)"
                       >4x</Button
@@ -383,7 +383,7 @@ function formatSegLabel(index: number) {
 
 /* ── 组件卸载时清理 ── */
 onUnmounted(() => {
-  if (store.playbackIsPlaying) store.stopPlayback();
+  if (store.playback.isPlaying) store.stopPlayback();
   if (store.isEditing) store.stopEdit();
   else if (store.isDrawing) store.cancelDraw();
 });
@@ -391,7 +391,7 @@ onUnmounted(() => {
 /* ── 轨迹播放辅助 ── */
 
 function togglePlayPause() {
-  if (store.playbackIsPaused) store.resumePlayback();
+  if (store.playback.isPaused) store.resumePlayback();
   else store.pausePlayback();
 }
 

@@ -3,9 +3,9 @@
  * 多路径 CRUD、绘制协调、测量计算、GeoJSON 导入导出
  * ============================== */
 
-import { ref, computed, toRaw, shallowRef } from 'vue';
+import { ref, computed, toRaw, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
-import { BoundingSphere, Cartesian3, Cartographic, Color, EllipsoidGeodesic } from 'cesium';
+import { BoundingSphere, Cartesian3, Cartographic, Color, EllipsoidGeodesic, Math as CesiumMath } from 'cesium';
 import { message } from 'ant-design-vue';
 import { useCesiumStore } from './cesiumStore';
 import { usePathDrawing } from '@/utils/cesium/path/usePathDrawing';
@@ -16,7 +16,8 @@ import { samplePathProfile } from '@/utils/cesium/path/usePathProfile';
 import { isValidViewer, genId, toDeg, formatArea } from '@/utils/cesium/shared/common';
 import { useClipHistory } from '@/utils/cesium/terrain-clip/useClipHistory';
 import { usePathEditing } from '@/utils/cesium/path/usePathEditing';
-import { usePathPlayback } from '@/utils/cesium/path/usePathPlayback';
+import { usePlayback } from '@/utils/cesium/shared/usePlayback';
+import type { PlaybackTrack, PlaybackKeyframe } from '@/utils/cesium/shared/usePlayback';
 import type { GeoPath, GeoPathType, GeoPathJSON } from '@/types/geoPath';
 import { useGeoPolygonStore } from './geoPolygonStore';
 import { calcPolygonMeasure } from '@/utils/cesium/polygon/usePolygonDrawing';
@@ -239,6 +240,11 @@ export const useGeoPathStore = defineStore('geoPath', () => {
       const path = activePath.value;
       if (path) {
         path.measurements = calcPathDistances(path.positions);
+        // 触发 Vue 响应式更新，使 vertexData 等 computed 重新计算
+        const idx = paths.value.findIndex((p) => p.id === path.id);
+        if (idx !== -1) {
+          paths.value[idx] = { ...path };
+        }
         if (linkEditEnabled.value && oldPosition && changedIndex !== undefined) {
           syncLinkedVertices(oldPosition, path.positions[changedIndex]);
         }
@@ -253,7 +259,79 @@ export const useGeoPathStore = defineStore('geoPath', () => {
    *  轨迹播放
    * ============================== */
 
-  const playback = usePathPlayback({ viewer });
+  const pb = usePlayback({ viewer });
+  const GEO_PATH_BASE_SPEED = 50; // m/s
+
+  /** 将 GeoPath 转换为通用 PlaybackTrack */
+  function toPlaybackTrack(path: GeoPath): PlaybackTrack {
+    const positions = path.positions;
+    const keyframes: PlaybackKeyframe[] = [];
+
+    let cumulDist = 0;
+    for (let i = 0; i < positions.length; i++) {
+      const time = cumulDist / GEO_PATH_BASE_SPEED;
+
+      let heading: number | undefined;
+      if (i < positions.length - 1) {
+        const c1 = Cartographic.fromCartesian(positions[i]);
+        const c2 = Cartographic.fromCartesian(positions[i + 1]);
+        heading = CesiumMath.toDegrees(Math.atan2(c2.longitude - c1.longitude, c2.latitude - c1.latitude));
+      } else if (keyframes.length > 0) {
+        heading = keyframes[keyframes.length - 1].heading;
+      }
+
+      keyframes.push({ time, position: toRaw(positions[i]), heading });
+
+      if (i < positions.length - 1) {
+        const c1 = Cartographic.fromCartesian(positions[i]);
+        const c2 = Cartographic.fromCartesian(positions[i + 1]);
+        cumulDist += new EllipsoidGeodesic(c1, c2).surfaceDistance;
+      }
+    }
+
+    return {
+      id: path.id,
+      keyframes,
+      totalTime: path.measurements.total / GEO_PATH_BASE_SPEED,
+      color: path.color,
+    };
+  }
+
+  /** 播放状态（与 UI 兼容的结构） */
+  const playback = ref({
+    isPlaying: false,
+    isPaused: false,
+    currentTime: 0,
+    progress: 0,
+    currentDistance: 0,
+  });
+
+  /* ── 同步 pb 状态到 playback ref ── */
+  watch(pb.isPlaying, (v) => {
+    playback.value.isPlaying = v;
+  });
+  watch(pb.isPaused, (v) => {
+    playback.value.isPaused = v;
+  });
+  watch(pb.progress, (v) => {
+    playback.value.progress = v;
+  });
+  watch(pb.currentTime, (v) => {
+    playback.value.currentTime = v;
+  });
+  watch(pb.currentDistance, (v) => {
+    playback.value.currentDistance = v;
+  });
+
+  function startPlayback(path: GeoPath) {
+    if (!path || path.positions.length < 2) return;
+    pb.startPlayback(toPlaybackTrack(path), {
+      speed: pb.speed.value,
+      followCamera: pb.followCamera.value,
+      clampToGround: true,
+      baseSpeed: GEO_PATH_BASE_SPEED,
+    });
+  }
 
   /* ==============================
    *  联动编辑
@@ -319,7 +397,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   /** 创建新路径并进入绘制模式 */
   function startDraw(type: GeoPathType = 'general') {
     if (isEditing.value || isMoving.value) return;
-    if (playback.isPlaying.value) playback.stopPlayback();
+    if (pb.isPlaying.value) pb.stopPlayback();
     const count = paths.value.length + 1;
     const path: GeoPath = {
       id: genId(),
@@ -422,7 +500,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
 
   /** 删除路径（编辑中先退出编辑；播放中先停止） */
   function removePath(id: string) {
-    if (playback.isPlaying.value) playback.stopPlayback();
+    if (pb.isPlaying.value) pb.stopPlayback();
     if (isEditing.value && activePathId.value === id) {
       editing.stopEdit();
       isEditing.value = false;
@@ -440,7 +518,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
 
   /** 清除所有路径（编辑中先退出编辑；播放中先停止） */
   function clearAll() {
-    if (playback.isPlaying.value) playback.stopPlayback();
+    if (pb.isPlaying.value) pb.stopPlayback();
     if (isEditing.value) {
       editing.stopEdit();
       isEditing.value = false;
@@ -505,7 +583,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
   function startEdit(pathId?: string) {
     const id = pathId ?? activePathId.value;
     if (!id || isDrawing.value || isMoving.value) return;
-    if (playback.isPlaying.value) playback.stopPlayback();
+    if (pb.isPlaying.value) pb.stopPlayback();
     const p = paths.value.find((p) => p.id === id);
     if (!p || p.positions.length < 2) return;
 
@@ -575,7 +653,7 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     if (isEditing.value || isDrawing.value) return;
     const path = paths.value.find((p) => p.id === id);
     if (!path || path.positions.length < 2) return;
-    if (playback.isPlaying.value) playback.stopPlayback();
+    if (pb.isPlaying.value) pb.stopPlayback();
     activePathId.value = id;
     history.reset(); // 清空编辑历史，移动后撤回只回退移动操作
     positions.value = path.positions;
@@ -843,20 +921,15 @@ export const useGeoPathStore = defineStore('geoPath', () => {
     importFromGeoJson,
     refreshPathEntity,
     // playback
-    playbackIsPlaying: playback.isPlaying,
-    playbackIsPaused: playback.isPaused,
-    playbackSpeed: playback.speed,
-    playbackFollowCamera: playback.followCamera,
-    playbackProgress: playback.progress,
-    playbackDistance: playback.currentDistance,
-    playbackDuration: playback.currentDuration,
-    playbackEstimatedDuration: playback.estimatedDuration,
-    startPlayback: playback.startPlayback,
-    pausePlayback: playback.pausePlayback,
-    resumePlayback: playback.resumePlayback,
-    stopPlayback: playback.stopPlayback,
-    setPlaybackSpeed: playback.setSpeed,
-    seekPlayback: playback.seekTo,
-    togglePlaybackFollowCamera: playback.toggleFollowCamera,
+    playback,
+    playbackSpeed: pb.speed,
+    playbackFollowCamera: pb.followCamera,
+    startPlayback,
+    pausePlayback: pb.pausePlayback,
+    resumePlayback: pb.resumePlayback,
+    stopPlayback: pb.stopPlayback,
+    setPlaybackSpeed: pb.setPlaybackSpeed,
+    seekPlayback: pb.seekPlayback,
+    togglePlaybackFollowCamera: pb.togglePlaybackFollowCamera,
   };
 });

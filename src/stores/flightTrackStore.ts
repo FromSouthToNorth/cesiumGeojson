@@ -3,18 +3,21 @@
  * 解析 frames.json，在 Cesium 中绘制轨迹、播放动画、显示姿态
  * ============================== */
 
-import { ref, computed, toRaw } from 'vue';
+import { ref, computed, toRaw, watch, markRaw } from 'vue';
 import { defineStore } from 'pinia';
 import {
   Cartesian3,
   Color,
-  HeadingPitchRoll,
-  Transforms,
   Math as CesiumMath,
   EllipsoidGeodesic,
   Cartographic,
+  sampleTerrain,
+  BoundingSphere,
+  HeadingPitchRange,
 } from 'cesium';
 import { useCesiumStore } from './cesiumStore';
+import { usePlayback } from '@/utils/cesium/shared/usePlayback';
+import type { PlaybackTrack } from '@/utils/cesium/shared/usePlayback';
 import { isValidViewer, genId } from '@/utils/cesium/shared/common';
 import type { FlightTrack, FlightTrackFrame, PlaybackState } from '@/types/flightTrack';
 
@@ -38,8 +41,24 @@ function parseGPSSignalLevel(level: string | undefined): number {
   return match ? parseInt(match[0], 10) : 0;
 }
 
-/** 解析 DJI json_result.json 为 FlightTrack（ altitude 为相对高度，需加上 takeoffLocationAltitude 得绝对海拔） */
-function parseDJIFrames(json: any): FlightTrack {
+/** 将 FlightTrack 转换为通用 PlaybackTrack */
+function toPlaybackTrack(track: FlightTrack): PlaybackTrack {
+  return {
+    id: track.id,
+    keyframes: track.frames.map((f, i) => ({
+      time: f.timestamp,
+      position: toRaw(track.positions[i]),
+      heading: f.aircraft.yaw,
+      pitch: f.aircraft.pitch,
+      roll: f.aircraft.roll,
+    })),
+    totalTime: track.totalTime,
+    color: '#FF4D4F',
+  };
+}
+
+/** 解析 DJI json_result.json 为 FlightTrack */
+async function parseDJIFrames(json: any, v?: any): Promise<FlightTrack> {
   const summary = json.summary || {};
   const frameStates: any[] = json.info?.frameTimeStates || [];
 
@@ -52,6 +71,24 @@ function parseDJIFrames(json: any): FlightTrack {
   const totalTime = summary.totalTime ?? 0;
   const frameCount = validRaw.length;
   const timeInterval = frameCount > 1 ? totalTime / (frameCount - 1) : 0;
+
+  // 取第一个有效点的地形海拔作为基准，叠加到每帧的相对高度上
+  let terrainHeight = 0;
+  if (isValidViewer(v) && validRaw.length > 0) {
+    const firstLoc = validRaw[0].flightControllerState?.aircraftLocation;
+    if (firstLoc) {
+      try {
+        const sampled = await sampleTerrain(v.terrainProvider, 11, [
+          Cartographic.fromDegrees(firstLoc.longitude, firstLoc.latitude),
+        ]);
+        if (sampled[0]?.height !== undefined) {
+          terrainHeight = sampled[0].height;
+        }
+      } catch {
+        console.warn('[flightTrack] 地形海拔查询失败，使用相对高度');
+      }
+    }
+  }
 
   const frames: FlightTrackFrame[] = validRaw.map((f, idx) => {
     const fcs = f.flightControllerState || {};
@@ -68,9 +105,9 @@ function parseDJIFrames(json: any): FlightTrack {
     const battery = f.batteryState || f.batteriesState?.['0'] || {};
     const airLink = f.airLinkState || {};
 
-    // DJI 的 altitude 是相对高度，绝对海拔 = 相对高度 + 起飞点海拔
+    // DJI 的 altitude 是相对高度，叠加地形海拔得绝对海拔
     const relativeHeight = fcs.altitude ?? 0;
-    const takeoffAlt = fcs.takeoffLocationAltitude ?? 0;
+    const absoluteAlt = relativeHeight + terrainHeight;
 
     const speed = Math.sqrt(
       (velocity.velocityX || 0) ** 2 +
@@ -83,7 +120,7 @@ function parseDJIFrames(json: any): FlightTrack {
       longitude: loc.longitude ?? 0,
       latitude: loc.latitude ?? 0,
       height: relativeHeight,
-      altitude: relativeHeight + takeoffAlt,
+      altitude: absoluteAlt,
       speed,
       aircraft: {
         pitch: attitude.pitch ?? 0,
@@ -123,7 +160,7 @@ function parseDJIFrames(json: any): FlightTrack {
     }
   }
 
-  const positions = frames.map((f) => Cartesian3.fromDegrees(f.longitude, f.latitude, f.altitude));
+  const positions = markRaw(frames.map((f) => Cartesian3.fromDegrees(f.longitude, f.latitude, f.altitude)));
 
   const appVersion = Array.isArray(summary.appVersion)
     ? summary.appVersion.join('.')
@@ -150,12 +187,15 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
   const cesiumStore = useCesiumStore();
   const viewer = computed(() => cesiumStore.viewer);
 
+  /* ── 通用回放实例 ── */
+  const pb = usePlayback({ viewer });
+
   /* ── 状态 ── */
   const tracks = ref<FlightTrack[]>([]);
   const activeTrackId = ref<string | null>(null);
   const isLoading = ref(false);
 
-  /** 播放状态 */
+  /** 播放状态（与 UI 兼容的结构） */
   const playback = ref<PlaybackState>({
     isPlaying: false,
     isPaused: false,
@@ -164,11 +204,24 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     currentFrameIndex: 0,
   });
 
-  const playbackFollowCamera = ref(true);
-  let playbackRafId: number | null = null;
-  let playbackStartRealTime = 0;
-  let playbackPausedTime = 0;
-  const playbackSpeed = ref(1);
+  /* ── 同步 pb 状态到 playback ref ── */
+  watch(pb.isPlaying, (v) => {
+    playback.value.isPlaying = v;
+  });
+  watch(pb.isPaused, (v) => {
+    playback.value.isPaused = v;
+  });
+  watch(pb.progress, (v) => {
+    playback.value.progress = v;
+  });
+  watch(pb.currentTime, (v) => {
+    playback.value.currentTime = v;
+    const track = activeTrack.value;
+    if (track) {
+      const interval = findFrameInterval(track.frames, v);
+      playback.value.currentFrameIndex = interval.index;
+    }
+  });
 
   const activeTrack = computed(() => tracks.value.find((t) => t.id === activeTrackId.value) ?? null);
   const hasTracks = computed(() => tracks.value.length > 0);
@@ -182,10 +235,9 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const track = parseDJIFrames(json);
-      tracks.value.push(track);
-      activeTrackId.value = track.id;
-      createTrackEntities(track);
+      const v = toRaw(viewer.value);
+      const track = await parseDJIFrames(json, v);
+      registerTrack(track);
     } catch (e) {
       console.error('加载飞行轨迹失败:', e);
       throw e;
@@ -200,17 +252,24 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      const track = parseDJIFrames(json);
-      track.name = `${file.name.replace(/\.json$/, '')}`;
-      tracks.value.push(track);
-      activeTrackId.value = track.id;
-      createTrackEntities(track);
+      const v = toRaw(viewer.value);
+      const track = await parseDJIFrames(json, v);
+      track.name = file.name.replace(/\.json$/, '');
+      registerTrack(track);
     } catch (e) {
       console.error('解析飞行轨迹文件失败:', e);
       throw e;
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /** 将轨迹注册到 store 并创建实体 */
+  function registerTrack(track: FlightTrack): void {
+    tracks.value.push(track);
+    activeTrackId.value = track.id;
+    createTrackEntities(track);
+    flyToTrack(track.id);
   }
 
   /* ── Cesium 实体管理 ── */
@@ -224,28 +283,29 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
 
     if (positions.length < 2) return;
 
-    // 1. 轨迹线（按高度着色，每段单独 entity）
+    // 1. 轨迹线（按高度着色，单 Entity + 顶点颜色，避免 N 个 Entity 拖垮帧率）
     const heights = frames.map((f) => f.altitude);
     const minH = Math.min(...heights);
     const maxH = Math.max(...heights);
     const hRange = Math.max(maxH - minH, 1);
 
-    for (let i = 0; i < positions.length - 1; i++) {
-      const t = (heights[i] - minH) / hRange;
-      const segColor = heightToColor(t);
-      v.entities.add({
-        id: `flightTrack_${track.id}_seg_${i}`,
-        polyline: {
-          positions: [positions[i], positions[i + 1]],
-          width: 3,
-          material: segColor,
-          clampToGround: false,
-        },
-      });
-    }
+    const colors = frames.map((f) => {
+      const t = (f.altitude - minH) / hRange;
+      return heightToColor(t);
+    });
+
+    v.entities.add({
+      id: `flightTrack_${track.id}_trail`,
+      polyline: {
+        positions,
+        width: 3,
+        colors,
+        colorsPerVertex: true,
+        clampToGround: false,
+      },
+    });
 
     // 2. 起点标记
-    const first = frames[0];
     v.entities.add({
       id: `flightTrack_${track.id}_start`,
       position: positions[0],
@@ -261,7 +321,6 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
         font: '12px sans-serif',
         fillColor: Color.fromCssColorString(START_COLOR),
         pixelOffset: new Cartesian3(0, -18, 0),
-        horizontalOrigin: 0, // CENTER
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     });
@@ -282,39 +341,6 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
         font: '12px sans-serif',
         fillColor: Color.fromCssColorString(END_COLOR),
         pixelOffset: new Cartesian3(0, -18, 0),
-        horizontalOrigin: 0, // CENTER
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      },
-    });
-
-    // 4. 飞机实体（初始位置为起点）
-    const hpr = headingPitchRollFromFrame(first);
-    const orientation = Transforms.headingPitchRollQuaternion(positions[0], hpr);
-
-    v.entities.add({
-      id: `flightTrack_${track.id}_aircraft`,
-      position: positions[0],
-      orientation,
-      point: {
-        pixelSize: 16,
-        color: Color.fromCssColorString('#FF4D4F'),
-        outlineColor: Color.WHITE,
-        outlineWidth: 2,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      },
-    });
-
-    // 5. 方向指示器
-    v.entities.add({
-      id: `flightTrack_${track.id}_direction`,
-      position: positions[0],
-      billboard: {
-        image: createDirectionCanvas(),
-        scale: 0.5,
-        rotation: CesiumMath.toRadians(-first.aircraft.yaw),
-        alignedAxis: Cartesian3.UNIT_Z,
-        width: 32,
-        height: 32,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     });
@@ -330,39 +356,31 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     return new Color(1, 1 - t2, 0);
   }
 
-  /** 从帧数据生成 HeadingPitchRoll */
-  function headingPitchRollFromFrame(frame: FlightTrackFrame): HeadingPitchRoll {
-    const heading = CesiumMath.toRadians(frame.aircraft.yaw);
-    const pitch = CesiumMath.toRadians(frame.aircraft.pitch);
-    const roll = CesiumMath.toRadians(frame.aircraft.roll);
-    return new HeadingPitchRoll(heading, pitch, roll);
-  }
+  /** 单调递增缓存，避免每帧 O(n) 线性扫描 */
+  let lastFindFrameIndex = 0;
 
-  /** 创建方向箭头 Canvas */
-  function createDirectionCanvas(): HTMLCanvasElement {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d')!;
+  /** 根据时间找到当前所处的帧区间和插值系数 t（0~1） */
+  function findFrameInterval(
+    frames: FlightTrackFrame[],
+    time: number,
+  ): { index: number; nextIndex: number; t: number } {
+    const n = frames.length;
+    if (n === 0) return { index: 0, nextIndex: 0, t: 0 };
 
-    ctx.clearRect(0, 0, 64, 64);
-    ctx.beginPath();
-    ctx.moveTo(32, 8);
-    ctx.lineTo(44, 28);
-    ctx.lineTo(36, 28);
-    ctx.lineTo(36, 52);
-    ctx.lineTo(28, 52);
-    ctx.lineTo(28, 28);
-    ctx.lineTo(20, 28);
-    ctx.closePath();
-
-    ctx.fillStyle = '#FF4D4F';
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    return canvas;
+    let i = lastFindFrameIndex;
+    if (time < frames[i].timestamp) {
+      i = 0;
+    }
+    for (; i < n - 1; i++) {
+      if (time < frames[i + 1].timestamp) {
+        lastFindFrameIndex = i;
+        const t = (time - frames[i].timestamp) / (frames[i + 1].timestamp - frames[i].timestamp || 1);
+        return { index: i, nextIndex: i + 1, t };
+      }
+    }
+    lastFindFrameIndex = n - 1;
+    const last = n - 1;
+    return { index: last, nextIndex: last, t: 0 };
   }
 
   function removeTrackEntities(trackId: string) {
@@ -373,13 +391,7 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     toRemove.forEach((e: any) => v.entities.remove(e));
   }
 
-  function findTrackEntity(trackId: string, suffix: string) {
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return null;
-    return v.entities.getById(`flightTrack_${trackId}_${suffix}`) ?? null;
-  }
-
-  /* ── 播放控制 ── */
+  /* ── 播放控制（委托给 usePlayback） ── */
 
   function startPlayback(trackId?: string) {
     const id = trackId ?? activeTrackId.value;
@@ -388,173 +400,38 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     if (!track || track.frames.length < 2) return;
 
     activeTrackId.value = id;
-    stopPlayback();
-
-    playback.value = {
-      isPlaying: true,
-      isPaused: false,
-      currentTime: 0,
-      progress: 0,
-      currentFrameIndex: 0,
-    };
-
-    playbackStartRealTime = performance.now();
-    playbackPausedTime = 0;
-    tickPlayback();
-  }
-
-  function tickPlayback() {
-    if (!playback.value.isPlaying || playback.value.isPaused) return;
-
-    const track = activeTrack.value;
-    if (!track) return;
-
-    const now = performance.now();
-    const elapsedReal = (now - playbackStartRealTime - playbackPausedTime) / 1000;
-    const elapsedSim = elapsedReal * playbackSpeed.value;
-
-    if (elapsedSim >= track.totalTime) {
-      playback.value.currentTime = track.totalTime;
-      playback.value.progress = 1;
-      playback.value.currentFrameIndex = track.frames.length - 1;
-      updateAircraftPosition(track.frames.length - 1);
-      playback.value.isPlaying = false;
-      return;
-    }
-
-    playback.value.currentTime = elapsedSim;
-    playback.value.progress = elapsedSim / track.totalTime;
-
-    const frameIdx = findFrameIndexAtTime(track.frames, elapsedSim);
-    playback.value.currentFrameIndex = frameIdx;
-
-    updateAircraftPosition(frameIdx);
-
-    playbackRafId = requestAnimationFrame(tickPlayback);
-  }
-
-  /** 根据时间找到对应的帧索引 */
-  function findFrameIndexAtTime(frames: FlightTrackFrame[], time: number): number {
-    for (let i = 0; i < frames.length - 1; i++) {
-      if (time >= frames[i].timestamp && time < frames[i + 1].timestamp) {
-        const t =
-          (time - frames[i].timestamp) / (frames[i + 1].timestamp - frames[i].timestamp || 1);
-        return t < 0.5 ? i : i + 1;
-      }
-    }
-    return frames.length - 1;
-  }
-
-  /** 更新飞机实体位置和朝向 */
-  function updateAircraftPosition(frameIdx: number) {
-    const track = activeTrack.value;
-    if (!track) return;
-
-    const v = toRaw(viewer.value);
-    if (!isValidViewer(v)) return;
-
-    const frame = track.frames[frameIdx];
-    const pos = track.positions[frameIdx];
-
-    // 更新飞机实体
-    const aircraftEntity = findTrackEntity(track.id, 'aircraft');
-    if (aircraftEntity) {
-      (aircraftEntity.position as any) = pos;
-      const hpr = headingPitchRollFromFrame(frame);
-      (aircraftEntity.orientation as any) = Transforms.headingPitchRollQuaternion(pos, hpr);
-    }
-
-    // 更新方向指示器
-    const dirEntity = findTrackEntity(track.id, 'direction');
-    if (dirEntity) {
-      (dirEntity.position as any) = pos;
-      (dirEntity.billboard as any).rotation = CesiumMath.toRadians(-frame.aircraft.yaw);
-    }
-
-    // 相机跟随
-    if (playbackFollowCamera.value && frameIdx > 0) {
-      const heading = CesiumMath.toRadians(frame.aircraft.yaw);
-      v.camera.setView({
-        destination: Cartesian3.fromDegrees(
-          frame.longitude - Math.sin(heading) * 0.0005,
-          frame.latitude - Math.cos(heading) * 0.0005,
-          frame.altitude + 30,
-        ),
-        orientation: {
-          heading,
-          pitch: CesiumMath.toRadians(-35),
-          roll: 0,
-        },
-      });
-    }
+    lastFindFrameIndex = 0;
+    pb.startPlayback(toPlaybackTrack(track), {
+      speed: pb.speed.value,
+      followCamera: pb.followCamera.value,
+      showTrail: false,
+    });
   }
 
   function pausePlayback() {
-    if (!playback.value.isPlaying || playback.value.isPaused) return;
-    playback.value.isPaused = true;
-    if (playbackRafId !== null) {
-      cancelAnimationFrame(playbackRafId);
-      playbackRafId = null;
-    }
-    playbackPausedTime = performance.now();
+    pb.pausePlayback();
   }
 
   function resumePlayback() {
-    if (!playback.value.isPlaying || !playback.value.isPaused) return;
-    playback.value.isPaused = false;
-    const pauseDuration = performance.now() - playbackPausedTime;
-    playbackStartRealTime += pauseDuration;
-    tickPlayback();
+    pb.resumePlayback();
   }
 
   function stopPlayback() {
-    if (playbackRafId !== null) {
-      cancelAnimationFrame(playbackRafId);
-      playbackRafId = null;
-    }
-    playback.value = {
-      isPlaying: false,
-      isPaused: false,
-      currentTime: 0,
-      progress: 0,
-      currentFrameIndex: 0,
-    };
+    lastFindFrameIndex = 0;
+    pb.stopPlayback();
   }
 
-  function seekPlayback(progress: number) {
-    const track = activeTrack.value;
-    if (!track) return;
-
-    const clamped = Math.max(0, Math.min(1, progress));
-    const targetTime = clamped * track.totalTime;
-
-    playback.value.progress = clamped;
-    playback.value.currentTime = targetTime;
-    playback.value.currentFrameIndex = findFrameIndexAtTime(track.frames, targetTime);
-
-    if (!playback.value.isPlaying) {
-      updateAircraftPosition(playback.value.currentFrameIndex);
-    } else {
-      const elapsedReal = targetTime / playbackSpeed.value;
-      playbackStartRealTime = performance.now() - elapsedReal * 1000;
-      playbackPausedTime = 0;
-    }
+  function seekPlayback(p: number) {
+    lastFindFrameIndex = 0;
+    pb.seekPlayback(p);
   }
 
-  function setPlaybackSpeed(speed: number) {
-    if (!playback.value.isPlaying) {
-      playbackSpeed.value = speed;
-      return;
-    }
-
-    const currentSimTime = playback.value.currentTime;
-    playbackSpeed.value = speed;
-    playbackStartRealTime = performance.now() - (currentSimTime / speed) * 1000;
-    playbackPausedTime = 0;
+  function setPlaybackSpeed(s: number) {
+    pb.setPlaybackSpeed(s);
   }
 
   function togglePlaybackFollowCamera() {
-    playbackFollowCamera.value = !playbackFollowCamera.value;
+    pb.togglePlaybackFollowCamera();
   }
 
   /* ── 轨迹管理 ── */
@@ -610,21 +487,14 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
       return;
     }
 
-    // 计算包围盒
-    const lons = track.frames.map((f) => f.longitude);
-    const lats = track.frames.map((f) => f.latitude);
-    const minLon = Math.min(...lons);
-    const maxLon = Math.max(...lons);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-
-    v.camera.flyTo({
-      destination: Cartesian3.fromDegrees(
-        (minLon + maxLon) / 2,
-        (minLat + maxLat) / 2,
-        track.maxHeight + 100,
+    // 用所有轨迹点计算 3D 包围球，自动适配相机距离和角度
+    const boundingSphere = BoundingSphere.fromPoints(track.positions);
+    v.camera.flyToBoundingSphere(boundingSphere, {
+      offset: new HeadingPitchRange(
+        0,
+        CesiumMath.toRadians(-45),
+        boundingSphere.radius * 2.5,
       ),
-      orientation: { heading: 0, pitch: CesiumMath.toRadians(-45), roll: 0 },
     });
   }
 
@@ -635,8 +505,8 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     hasTracks,
     isLoading,
     playback,
-    playbackSpeed,
-    playbackFollowCamera,
+    playbackSpeed: pb.speed,
+    playbackFollowCamera: pb.followCamera,
     loadFromUrl,
     loadFromFile,
     removeTrack,

@@ -3,11 +3,7 @@
   加载 frames.json，解析并在 Cesium 中显示飞行轨迹、姿态与云台状态
 -->
 <template>
-  <SidePanel
-    :visible="visible"
-    title="飞行轨迹"
-    @update:visible="emit('update:visible', $event)"
-  >
+  <SidePanel :visible="visible" title="飞行轨迹" @update:visible="emit('update:visible', $event)">
     <!-- ── 状态1：无轨迹 ── -->
     <template v-if="!store.hasTracks">
       <div class="empty-state">
@@ -27,13 +23,8 @@
     <template v-if="store.hasTracks">
       <!-- 轨迹卡片列表 -->
       <div class="tracks-list">
-        <div
-          v-for="track in store.tracks"
-          :key="track.id"
-          class="track-card"
-          :class="{ active: track.id === store.activeTrackId }"
-          @click="store.selectTrack(track.id)"
-        >
+        <div v-for="track in store.tracks" :key="track.id" class="track-card"
+          :class="{ active: track.id === store.activeTrackId }" @click="store.selectTrack(track.id)">
           <div class="track-header">
             <div class="track-info">
               <RocketOutlined class="track-icon" />
@@ -41,24 +32,14 @@
             </div>
             <div class="track-actions">
               <Tooltip title="飞行定位">
-                <Button
-                  type="text"
-                  size="small"
-                  class="action-btn"
-                  aria-label="飞行定位"
-                  @click.stop="store.flyToTrack(track.id)"
-                >
+                <Button type="text" size="small" class="action-btn" aria-label="飞行定位"
+                  @click.stop="store.flyToTrack(track.id)">
                   <AimOutlined />
                 </Button>
               </Tooltip>
               <Tooltip :title="track.show ? '隐藏' : '显示'">
-                <Button
-                  type="text"
-                  size="small"
-                  class="action-btn"
-                  :aria-label="track.show ? '隐藏轨迹' : '显示轨迹'"
-                  @click.stop="store.toggleVisibility(track.id)"
-                >
+                <Button type="text" size="small" class="action-btn" :aria-label="track.show ? '隐藏轨迹' : '显示轨迹'"
+                  @click.stop="store.toggleVisibility(track.id)">
                   <EyeOutlined v-if="track.show" />
                   <EyeInvisibleOutlined v-else />
                 </Button>
@@ -111,14 +92,8 @@
               <template v-else>
                 <div class="playback-progress">
                   <span class="pb-time">{{ formatTime(store.playback.currentTime) }}</span>
-                  <Slider
-                    :min="0"
-                    :max="1"
-                    :step="0.001"
-                    :value="store.playback.progress"
-                    size="small"
-                    @change="(v: any) => store.seekPlayback(v as number)"
-                  />
+                  <Slider :min="0" :max="1" :step="0.001" :value="store.playback.progress" size="small"
+                    @change="(v: any) => store.seekPlayback(v as number)" />
                   <span class="pb-time">{{ formatTime(track.totalTime) }}</span>
                 </div>
 
@@ -126,11 +101,7 @@
                   <Button size="small" @click.stop="store.seekPlayback(0)">
                     <FastBackwardOutlined />
                   </Button>
-                  <Button
-                    size="small"
-                    type="primary"
-                    @click.stop="togglePlayPause"
-                  >
+                  <Button size="small" type="primary" @click.stop="togglePlayPause">
                     <PauseOutlined v-if="!store.playback.isPaused" />
                     <CaretRightOutlined v-else />
                   </Button>
@@ -140,28 +111,23 @@
                 </div>
 
                 <div class="playback-options">
-                  <Button
-                    size="small"
-                    :type="store.playbackFollowCamera ? 'primary' : 'default'"
-                    @click.stop="store.togglePlaybackFollowCamera()"
-                  >
+                  <Button size="small" :type="store.playbackFollowCamera ? 'primary' : 'default'"
+                    @click.stop="store.togglePlaybackFollowCamera()">
                     <AimOutlined />
                     {{ store.playbackFollowCamera ? '视角跟随' : '自由视角' }}
                   </Button>
                   <div class="speed-btns">
-                    <Button
-                      v-for="s in [0.5, 1, 2, 4]"
-                      :key="s"
-                      size="small"
-                      :type="store.playbackSpeed === s ? 'primary' : 'default'"
-                      @click.stop="store.setPlaybackSpeed(s)"
-                    >
+                    <Button v-for="s in [0.5, 1, 2, 4]" :key="s" size="small"
+                      :type="store.playbackSpeed === s ? 'primary' : 'default'" @click.stop="store.setPlaybackSpeed(s)">
                       {{ s }}x
                     </Button>
                   </div>
                 </div>
               </template>
             </div>
+
+            <!-- 轨迹分析 -->
+            <FlightTrackAnalysis :frames="track.frames" :total-time="track.totalTime" />
 
             <!-- 当前帧数据 -->
             <div v-if="currentFrame" class="frame-data">
@@ -174,7 +140,8 @@
               <div class="data-group">
                 <div class="data-row">
                   <span class="data-label">经纬度</span>
-                  <span class="data-value">{{ currentFrame.latitude.toFixed(6) }}, {{ currentFrame.longitude.toFixed(6) }}</span>
+                  <span class="data-value">{{ currentFrame.latitude.toFixed(6) }}, {{ currentFrame.longitude.toFixed(6)
+                  }}</span>
                 </div>
                 <div class="data-row">
                   <span class="data-label">相对高度</span>
@@ -232,17 +199,11 @@
               <div class="data-group">
                 <div class="group-title">相机状态</div>
                 <div class="camera-status">
-                  <span
-                    class="status-badge"
-                    :class="{ active: currentFrame.camera.isPhoto }"
-                  >
+                  <span class="status-badge" :class="{ active: currentFrame.camera.isPhoto }">
                     <CameraOutlined />
                     拍照 {{ currentFrame.camera.isPhoto ? '中' : '' }}
                   </span>
-                  <span
-                    class="status-badge"
-                    :class="{ active: currentFrame.camera.isVideo }"
-                  >
+                  <span class="status-badge" :class="{ active: currentFrame.camera.isVideo }">
                     <VideoCameraOutlined />
                     录像 {{ currentFrame.camera.isVideo ? '中' : '' }}
                   </span>
@@ -306,6 +267,7 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons-vue';
 import { SidePanel } from '.';
+import { FlightTrackAnalysis } from '../shared';
 import { useFlightTrackStore } from '@/stores/flightTrackStore';
 
 defineOptions({ name: 'FlightTrack' });
@@ -358,7 +320,7 @@ async function handleFileChange(e: Event) {
 /* ── 加载默认示例 ── */
 async function loadDefault() {
   try {
-    await store.loadFromUrl('/data/frames.json');
+    await store.loadFromUrl('/data/json_result.json');
     message.success('示例轨迹加载成功');
   } catch (err) {
     message.error('示例加载失败：' + (err as Error).message);
