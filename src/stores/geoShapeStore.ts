@@ -242,7 +242,9 @@ export const useGeoShapeStore = defineStore('geoShape', () => {
     }
     // 一次遍历批量移除，避免逐个 remove 触发多次 Cesium 内部更新
     const toRemove: any[] = [];
-    const prefixSet = new Set(circles.value.map((c) => `geoCircle_${c.id}`).concat(rectangles.value.map((r) => `geoRectangle_${r.id}`)));
+    const prefixSet = new Set(
+      circles.value.map((c) => `geoCircle_${c.id}`).concat(rectangles.value.map((r) => `geoRectangle_${r.id}`)),
+    );
     v.entities.values.forEach((e: any) => {
       if (e.id && prefixSet.has(e.id as string)) toRemove.push(e);
     });

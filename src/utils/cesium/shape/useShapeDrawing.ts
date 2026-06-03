@@ -257,7 +257,10 @@ export function useShapeDrawing(options: UseShapeDrawingOptions) {
           updateRectanglePreview(anchorPos!, cartesian);
           const bounds = computeRectangleBounds(anchorPos!, cartesian);
           const { width, height } = calcGeoRectangleSize({
-            west: bounds[0], south: bounds[1], east: bounds[2], north: bounds[3],
+            west: bounds[0],
+            south: bounds[1],
+            east: bounds[2],
+            north: bounds[3],
           });
           onLiveUpdate?.({ value1: width, value2: height });
         }

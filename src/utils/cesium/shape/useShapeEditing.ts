@@ -235,7 +235,10 @@ export function useShapeEditing(options: UseShapeEditingOptions) {
   function clearEditEntities() {
     const v = getViewer();
     if (!v) return;
-    if (outlineEntity) { v.entities.remove(outlineEntity); outlineEntity = null; }
+    if (outlineEntity) {
+      v.entities.remove(outlineEntity);
+      outlineEntity = null;
+    }
     controlPointEntities.forEach((e) => v.entities.remove(e));
     controlPointEntities = [];
   }
@@ -293,7 +296,6 @@ export function useShapeEditing(options: UseShapeEditingOptions) {
         normalizeRectBounds();
         updateEditPositions(buildRectangleControlPoints(context!));
       }
-
     });
   }
 
@@ -356,7 +358,10 @@ export function useShapeEditing(options: UseShapeEditingOptions) {
     isEditing.value = false;
     context = null;
 
-    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
     pendingMousePos = null;
 
     handler?.destroy();

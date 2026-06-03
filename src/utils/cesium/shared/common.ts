@@ -77,7 +77,10 @@ export function formatDist(dist: number): string {
 }
 
 /** 计算地理矩形的宽度和高度（大地测地线距离） */
-export function calcGeoRectangleSize(rect: { west: number; south: number; east: number; north: number }): { width: number; height: number } {
+export function calcGeoRectangleSize(rect: { west: number; south: number; east: number; north: number }): {
+  width: number;
+  height: number;
+} {
   const midLat = (rect.south + rect.north) / 2;
   const midLon = (rect.west + rect.east) / 2;
   const width = new EllipsoidGeodesic(

@@ -159,9 +159,7 @@ export const useGeoJsonStore = defineStore('geojson', () => {
   function removeAllLayers() {
     if (layers.value.length === 0) return;
     // dataSource 已 markRaw，直接收集原始引用，然后一次性清空 UI
-    const dataSources = layers.value
-      .map((l) => l.dataSource)
-      .filter(Boolean);
+    const dataSources = layers.value.map((l) => l.dataSource).filter(Boolean);
     layers.value = [];
 
     const v = toRaw(viewer.value);

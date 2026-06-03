@@ -242,9 +242,7 @@ export function useEntityMove(options: EntityMoveOptions) {
       const dLon = CesiumMath.toDegrees(newCenterCarto.longitude - origCenterCarto.longitude);
       const dLat = CesiumMath.toDegrees(newCenterCarto.latitude - origCenterCarto.latitude);
       const b = context.bounds ?? [0, 0, 0, 0];
-      (ghostEntity.polyline as any).positions = buildRectCorners([
-        b[0] + dLon, b[1] + dLat, b[2] + dLon, b[3] + dLat,
-      ]);
+      (ghostEntity.polyline as any).positions = buildRectCorners([b[0] + dLon, b[1] + dLat, b[2] + dLon, b[3] + dLat]);
     }
   }
 
@@ -270,7 +268,10 @@ export function useEntityMove(options: EntityMoveOptions) {
   /* ─── 清理 ─── */
 
   function cleanup() {
-    if (_moveRafId !== null) { cancelAnimationFrame(_moveRafId); _moveRafId = null; }
+    if (_moveRafId !== null) {
+      cancelAnimationFrame(_moveRafId);
+      _moveRafId = null;
+    }
     _pendingGlobePos = null;
     if (ghostEntity) {
       const v = toRaw(viewer.value);

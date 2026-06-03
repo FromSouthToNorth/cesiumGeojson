@@ -105,7 +105,8 @@ function createDirectionCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-/* ── requestRenderMode & terrain SSE 引用计数（多实例共用） ── */
+/** ENU 变换工厂（模块级常量，避免每次 startPlayback 重复创建） */
+const ENU_TRANSFORM = Transforms.localFrameToFixedFrameGenerator('east', 'north');
 let requestRenderModeRefCount = 0;
 let originalRequestRenderMode: boolean | undefined = undefined;
 let terrainSSERefCount = 0;
@@ -247,7 +248,6 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     // NED 中 pitch 绕横向轴(East)、roll 绕纵向轴(North)
     // ENU 中 pitch 绕纵向轴(North)、roll 绕横向轴(East)
     // 因此 DJI 的 NED 姿态需要映射：heading=yaw, pitch=roll, roll=-pitch
-    const enuTransform = Transforms.localFrameToFixedFrameGenerator('east', 'north');
 
     for (const kf of track.keyframes) {
       const t = JulianDate.addSeconds(st, kf.time, new JulianDate());
@@ -258,10 +258,7 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
         CesiumMath.toRadians(kf.roll ?? 0),
         CesiumMath.toRadians(-(kf.pitch ?? 0)),
       );
-      so.addSample(
-        t,
-        Transforms.headingPitchRollQuaternion(kf.position, hpr, Ellipsoid.WGS84, enuTransform),
-      );
+      so.addSample(t, Transforms.headingPitchRollQuaternion(kf.position, hpr, Ellipsoid.WGS84, ENU_TRANSFORM));
     }
 
     sampledPosition = sp;
@@ -570,7 +567,6 @@ export function usePlayback(options: { viewer: ComputedRef<any> }) {
     seekPlayback,
     setPlaybackSpeed,
     togglePlaybackFollowCamera,
-    toggleTrail,
     destroy,
   };
 }

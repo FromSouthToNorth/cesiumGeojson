@@ -40,7 +40,7 @@ No test runner is configured.
 src/
 ├── components/Cesium/         # Map-related components
 │   ├── index.vue              # Cesium container (creates Viewer)
-│   ├── Toolbox.vue            # Floating toolbar (GeoJSON / clip / point / geoPath / geoPolygon)
+│   ├── Toolbox.vue            # Floating toolbar (7 tools)
 │   ├── CesiumNavigation.vue   # Theme toggle / zoom / home / compass
 │   ├── Compass.vue            # Draggable compass widget
 │   ├── panels/                # Side panel tools
@@ -48,14 +48,17 @@ src/
 │   │   ├── GeoJson.vue        # GeoJSON upload & layer management
 │   │   ├── TerrainClip.vue    # Terrain clipping panel
 │   │   ├── PointCreator.vue   # Observation point creator
+│   │   ├── GeoShape.vue       # Circle / rectangle draw & manage
 │   │   ├── GeoPath.vue        # Geological path planning & measurement
 │   │   ├── GeoPolygon.vue     # Polygon geological survey (area & perimeter, slope, clipping)
 │   │   └── FlightTrack.vue    # DJI flight track playback & analysis
 │   └── shared/                # Reusable sub-components
-│       ├── MapPopup.vue       # Left-click popup with SVG leader line
+│       ├── BubbleDialog.vue   # Generic popup with SVG leader line (used by MapPopup)
+│       ├── MapPopup.vue       # Left-click entity popup (wraps BubbleDialog)
 │       ├── MapContextMenu.vue # Right-click context menu (per entity type)
 │       ├── popupVariants.ts   # 3 visual variants (glass/minimal/card)
 │       ├── ElevationProfile.vue # Path elevation profile chart
+│       ├── FlightTrackAnalysis.vue # Height-time & speed-time charts
 │       ├── VertexTable.vue     # Generic vertex coordinate table
 │       ├── SlopeAnalysis.vue   # Slope analysis (stats, distribution, legend)
 │       ├── EditToolbar.vue     # Shared editor toolbar (finish/undo/redo)
@@ -64,7 +67,8 @@ src/
 │   ├── cesiumStore.ts         # Viewer singleton
 │   ├── geojsonStore.ts        # GeoJSON layer CRUD
 │   ├── terrainClipStore.ts    # Terrain clipping coordinator (composes 4 sub-modules)
-│   ├── geoPathStore.ts        # Geological path CRUD, drawing, measurement
+│   ├── geoShapeStore.ts       # Circle / rectangle CRUD, entity management
+│   ├── geoPathStore.ts        # Geological path CRUD, drawing, measurement, playback
 │   ├── geoPolygonStore.ts     # Multi-polygon CRUD, drawing, area/perimeter, slope analysis, terrain clipping, GeoJSON export
 │   ├── flightTrackStore.ts    # DJI flight track parsing, Cesium entity rendering, playback animation
 │   ├── themeStore.ts          # Light/dark theme (localStorage persisted)
@@ -72,32 +76,39 @@ src/
 ├── types/
 │   ├── geoPath.ts             # GeoPath, ElevationProfile, GeoPathType types
 │   ├── geoPolygon.ts          # GeoPolygon, GeoPolygonMeasureResult, GeoPolygonJSON
-│   ├── slopeAnalysis.ts       # SlopeGridPoint, SlopeAnalysisResult (split from geoPolygon.ts)
+│   ├── geoShape.ts            # GeoCircle, GeoRectangle, ActiveShapeTool
+│   ├── slopeAnalysis.ts       # SlopeGridPoint, SlopeAnalysisResult
 │   └── flightTrack.ts         # FlightTrack, FlightTrackFrame, PlaybackState types
 ├── utils/
 │   ├── cesium/
 │   │   ├── viewer.ts          # Viewer factory (Ion token, terrain, loading state)
 │   │   ├── shared/
 │   │   │   ├── common.ts      # Shared types & helpers (toDeg, formatArea, formatDist, etc.)
+│   │   │   ├── useBaseDrawing.ts   # Generic drawing lifecycle (events, entities, undo, snapping)
+│   │   │   ├── snapEngine.ts       # Pure-algorithm snapping (spatial index + screen cache)
+│   │   │   ├── useSnapping.ts      # Drawing vertex snapping (wraps SnapEngine, adds Cesium visuals)
 │   │   │   ├── useKeyboardShortcuts.ts # Declarative keyboard shortcuts (cross-platform Ctrl/Cmd)
-│   │   │   ├── useSnapping.ts # Drawing vertex snapping (world + screen distance filter, shift disable)
 │   │   │   ├── useMapInteraction.ts # Global map interaction (left-click popup, right-click menu)
-│   │   │   └── useEntityMove.ts     # Entity move with ghost preview, highlight, undo support
+│   │   │   ├── useEntityMove.ts     # Entity move with ghost preview, highlight, undo support
+│   │   │   └── usePlayback.ts       # Cesium Clock-based trajectory playback (shared by GeoPath + FlightTrack)
 │   │   ├── terrain-clip/
 │   │   │   ├── useClipDrawing.ts   # Terrain clip polygon drawing mode
 │   │   │   ├── useClipEditing.ts   # Terrain clip vertex editing mode
 │   │   │   ├── useClipHistory.ts   # Terrain clip undo/redo stack
 │   │   │   └── useClipPersistence.ts # Terrain clip localStorage persistence
 │   │   ├── path/
-│   │   │   ├── usePathDrawing.ts   # Polyline drawing (left-click add, right-click finish)
+│   │   │   ├── usePathDrawing.ts   # Polyline drawing (wraps useBaseDrawing)
 │   │   │   ├── usePathEditing.ts   # Polyline vertex editing (drag/add/delete, open polyline)
 │   │   │   ├── usePathMeasure.ts   # Geodesic distance calculation
-│   │   │   ├── usePathPlayback.ts  # Path trajectory playback animation
+│   │   │   ├── usePathPlayback.ts  # Obsolete — kept for reference; playback moved to usePlayback
 │   │   │   └── usePathProfile.ts   # Terrain elevation profile sampling & stats
-│   │   └── polygon/
-│   │       ├── usePolygonDrawing.ts # Polygon drawing & area/perimeter measurement
-│   │       ├── usePolygonEditing.ts # Polygon vertex editing (drag/add/delete, closed polygon)
-│   │       └── usePolygonSlope.ts   # Terrain slope analysis (Horn algorithm, grid sampling)
+│   │   ├── polygon/
+│   │   │   ├── usePolygonDrawing.ts # Polygon drawing (wraps useBaseDrawing)
+│   │   │   ├── usePolygonEditing.ts # Polygon vertex editing (drag/add/delete, closed polygon)
+│   │   │   └── usePolygonSlope.ts   # Terrain slope analysis (Horn algorithm, grid sampling)
+│   │   └── shape/
+│   │       ├── useShapeDrawing.ts   # Circle / rectangle two-click drawing
+│   │       └── useShapeEditing.ts   # Circle radius / rectangle corner editing
 │   ├── geojson/index.ts       # GeoJSON coordinate inspection
 │   └── useListSearch.ts       # Generic list search filter composable (debounced)
 ├── views/Home.vue
@@ -156,6 +167,58 @@ src/
 - Theme choice persisted in localStorage key `cesium-theme`
 - **Slope classification colors** defined as CSS custom properties in `src/style.css`: `--slope-gentle` (#52c41a), `--slope-moderate` (#faad14), `--slope-steep` (#ff4d4f). Reference via `var(--slope-*)` in scoped CSS; JS rendering contexts (SVG, Cesium Color) still use hardcoded string literals
 
+## Shared Infrastructure
+
+### `useBaseDrawing` — Generic Drawing Lifecycle
+
+A shared composable that encapsulates the common mechanics of vertex-based drawing:
+
+- Mouse event registration (left-click add, right-click finish, double-click finish, Escape/Enter/Backspace)
+- Generic draw entities (vertex markers, polyline, preview line, closed preview, fill polygon)
+- RAF-throttled mouse-move preview
+- Minimum vertex distance guard (1m)
+- Integration with snapping (Shift temporarily disables)
+
+Used as the foundation by `usePathDrawing` and `usePolygonDrawing`, which wrap it with feature-specific callbacks (distance/area measurement, finish rules).
+
+### `snapEngine.ts` + `useSnapping` — Vertex Snapping
+
+Two-layer snapping architecture:
+
+**`SnapEngine`** (pure algorithm, no Vue reactivity):
+- 3D hash grid spatial index for fast nearest-neighbor queries
+- Screen projection cache (reused while camera is stationary)
+- Early-exit optimization with DPI-adaptive thresholds
+- Returns `SnapTarget` with `position`, `sourceVertex`, `sourceType`
+
+**`useSnapping`** (Vue reactive wrapper):
+- Manages Cesium visual indicators (gold dot + dashed guide line)
+- Configurable `pixelThreshold` (default 12px) and `worldThreshold` (default 300m)
+- `collectTargets()` callback gathers all potential `SnapSource[]` from paths, polygons, and points
+- `excludeLayerId` prevents snapping to the currently-edited layer's own vertices
+- Held **Shift** temporarily disables snapping
+
+### `usePlayback` — Shared Trajectory Playback
+
+Cesium Clock + `SampledPositionProperty` based playback engine shared by **GeoPath** and **FlightTrack**:
+
+- Accepts `PlaybackKeyframe[]` (time + position, optional heading/pitch/roll/velocity)
+- `startPlayback()` creates Cesium `Clock` and `Entity` with sampled position property
+- `pausePlayback()` / `resumePlayback()` freeze/unfreeze the clock
+- `seekPlayback(progress)` jumps to a 0-1 progress point
+- `playbackSpeed` multiplier controls time dilation
+- `syncUiState` callback fires every tick for UI updates (progress bar, stats panel)
+
+Replaces the older RAF-based `usePathPlayback.ts` (kept for reference but no longer used).
+
+### `BubbleDialog` + `MapPopup` — Popup System
+
+**`BubbleDialog`** is a generic, Cesium-agnostic bubble dialog with SVG leader line and three style variants. It accepts `screenPos` (screen coordinates) and auto-positions itself to avoid viewport overflow.
+
+**`MapPopup`** wraps `BubbleDialog` with entity-specific content: it picks the entity via `scene.pick`, looks up its metadata, and renders the appropriate variant (path=blue, polygon=green, point=purple).
+
+## Feature Architectures
+
 ### Terrain Clip Architecture
 
 Terrain clipping uses a **coordinator pattern**: `terrainClipStore` is a thin coordinator that composes 4 independent composables, plus a shared keyboard shortcuts composable:
@@ -197,21 +260,22 @@ Rules:
 - `meta: true` checks `metaKey` on Mac, `ctrlKey` on Win/Linux
 - Non-meta shortcuts are blocked when any modifier key is pressed (prevents browser conflicts)
 - `e.preventDefault()` is called automatically on matched shortcuts
-- Used by `useClipEditing` and `useClipDrawing` for their keyboard interactions
+- Used by all drawing and editing modes for their keyboard interactions
 
 ### GeoPath Architecture
 
 Geological path planning uses the same **coordinator pattern** as terrain clipping:
 
 ```
-geoPathStore (coordinator: multi-path CRUD, drawing, editing, Cesium entity management)
-├── usePathDrawing       — Polyline drawing: left-click add, right-click finish, Backspace undo
+geoPathStore (coordinator: multi-path CRUD, drawing, editing, Cesium entity management, playback)
+├── usePathDrawing       — Polyline drawing (wraps useBaseDrawing)
 │   └── useKeyboardShortcuts  — Escape/Backspace/Enter
 ├── usePathEditing       — Polyline vertex editing: drag, midpoint add, right-click delete
 │   └── useKeyboardShortcuts  — Escape/Enter, Delete/Backspace, Ctrl/Cmd+Z/Y
 ├── useClipHistory       — Undo/redo stack (30 snapshots of Cartesian3[])
 ├── usePathMeasure       — Geodesic distance calculation (segments + total)
-└── usePathProfile       — Terrain elevation profile sampling via sampleTerrain
+├── usePathProfile       — Terrain elevation profile sampling via sampleTerrain
+└── usePlayback          — Shared Cesium Clock trajectory playback
 ```
 
 Key details:
@@ -221,9 +285,9 @@ Key details:
 - **Editing**: Enter/Escape to exit edit mode, Delete/Backspace to remove vertex (min 2 vertices), Ctrl+Z/Y for undo/redo. Camera locks during editing. Guards against `isMoving`.
 - **Move**: Context menu → `startMove(id)` resets history, `applyMovePositions(id, newPositions)` saves pre/post-move snapshots via `history.pushHistory()`. On undo/redo, entity is rebuilt via `removePathEntities` + `createPathEntity`. Ghost preview managed by `useEntityMove`.
 - **Elevation profile**: Samples terrain at 10m intervals along the path, computes min/max/avg/climb/descent/gradient, rendered as inline SVG chart. Re-sample button shown when profile is stale.
+- **Playback**: Uses shared `usePlayback` with path vertices as keyframes. Supports speed control (0.5x–4x), pause/resume, progress seek, camera follow (offset behind aircraft by heading, altitude + 30m, -35° pitch).
 - **GeoJSON import/export**: Cartesian3 → [lng, lat, height] conversion, FeatureCollection blob download. Import supports `.geojson` / `.json` files via file picker.
 - **Path colors**: 8-color cycle (`#FF4D4F`, `#52C41A`, `#1890FF`, `#FAAD14`, `#722ED1`, `#13C2C2`, `#EB2F96`, `#FA541C`). Drawing preview color matches assigned path color.
-- **Snapping**: `useSnapping` composable shared with GeoPolygon. World-distance coarse filter (300m) + screen-distance fine filter (12px). Supports vertex and edge-midpoint snapping with visual indicator (gold dot) and dashed guide line. Hold **Shift** to temporarily disable.
 
 ### GeoPolygon Architecture
 
@@ -231,7 +295,7 @@ Polygon geological survey uses a coordinator store with drawing, editing, slope 
 
 ```
 geoPolygonStore (coordinator: multi-polygon CRUD, drawing, editing, entity management, slope analysis, terrain clipping)
-├── usePolygonDrawing    — Polygon drawing: left-click add, right-click finish, Backspace undo
+├── usePolygonDrawing    — Polygon drawing (wraps useBaseDrawing)
 │   └── useKeyboardShortcuts  — Escape/Backspace/Enter
 ├── usePolygonEditing    — Polygon vertex editing: drag, midpoint add, right-click delete
 │   └── useKeyboardShortcuts  — Escape/Enter, Delete/Backspace, Ctrl/Cmd+Z/Y
@@ -280,31 +344,48 @@ Per-polygon terrain clipping toggleable from the detail panel:
 - Inverse button disabled when no polygon has clipping enabled
 - Only one `ClippingPolygonCollection` can be active on the globe — conflicts with `terrainClipStore` if both used simultaneously
 
+### GeoShape Architecture
+
+Circle and rectangle drawing using a lightweight coordinator store with two-click interaction:
+
+```
+geoShapeStore (coordinator: circle/rectangle CRUD, entity management, move)
+└── useShapeDrawing      — Two-click drawing: first click sets anchor, second click confirms
+```
+
+Key details:
+- **Circle drawing**: First click sets center → mouse moves preview radius circle → second click confirms. Radius computed via `EllipsoidGeodesic`.
+- **Rectangle drawing**: First click sets corner 1 → mouse moves preview rectangle → second click confirms diagonal corner. Bounds stored as `[west, south, east, north]` in degrees.
+- **Entity rendering**: Circle uses `EllipseGraphics` (semiMajorAxis = semiMinorAxis = radius). Rectangle uses `RectangleGraphics` with `Rectangle.fromDegrees()`.
+- **Color**: Same 8-color cycle as GeoPath/GeoPolygon.
+- **Label**: Circle shows name + radius; rectangle shows name.
+- **Move**: Circles move by center; rectangles move by translating all bounds. Managed by `useEntityMove`.
+- **Visibility toggle**: Per-shape show/hide via entity `show` property.
+- **No editing yet**: Vertex editing (resize circle, reshape rectangle) is planned but not implemented.
+- **Live measure**: `liveMeasure` ref shows real-time radius / width×height during drawing.
+
 ### FlightTrack Architecture
 
-DJI flight track playback uses a lightweight store with Cesium entity management and RAF-based animation:
+DJI flight track playback uses a lightweight store with Cesium entity management and the shared `usePlayback` composable:
 
 ```
 flightTrackStore
 ├── loadFromUrl / loadFromFile   — Parse DJI json_result.json (summary + info.frameTimeStates)
 ├── createTrackEntities          — Render: segment polylines (height-colored), start/end markers, aircraft point, direction billboard
 ├── removeTrackEntities          — Remove all entities by prefix filter
-├── startPlayback / stopPlayback — RAF loop with speed control
-├── tickPlayback                 — Advance frame index, update aircraft position/orientation, camera follow
-├── updateAircraftPosition       — Set entity position + HPR quaternion, update billboard rotation
-├── seekPlayback                 — Jump to progress (0-1)
-└── toggleVisibility / flyToTrack — Per-track show/hide and camera flyTo
+└── usePlayback                  — Shared Cesium Clock trajectory playback (see Shared Infrastructure)
 ```
 
 Key details:
 - **Data source**: DJI `json_result.json` with `summary` (aircraft metadata) and `info.frameTimeStates[]` (per-frame telemetry).
 - **Altitude handling**: DJI's `flightControllerState.altitude` is **relative height** (above takeoff). Absolute altitude = `relativeHeight + takeoffLocationAltitude`. `height` field stores relative; `altitude` stores absolute.
 - **Entity ID prefix**: `flightTrack_${trackId}_{suffix}` where suffix = `seg_${i}`, `start`, `end`, `aircraft`, `direction`.
-- **Playback**: RAF loop driven by `performance.now()`. `playbackSpeed` multiplies real elapsed time. Pauses freeze via `playbackPausedTime` offset.
+- **Playback**: Delegated to shared `usePlayback`. RAF loop driven by `performance.now()`. `playbackSpeed` multiplies real elapsed time. Pauses freeze via `playbackPausedTime` offset.
 - **Camera follow**: `playbackFollowCamera` toggles automatic camera tracking behind aircraft (offset by heading, altitude + 30m, -35° pitch).
 - **Height-colored track**: Each segment gets a color from green (low) → yellow → red (high) based on normalized altitude within the track.
 - **Direction billboard**: Canvas-rendered arrow rotated by `-yaw` with `alignedAxis: Cartesian3.UNIT_Z`.
 - **Track removal**: `removeTrack` stops playback, removes entities, filters from `tracks` array, falls back active track to first remaining.
+- **FlightTrackAnalysis**: `FlightTrackAnalysis.vue` renders height-time and speed-time SVG charts from frame telemetry data.
 
 ### Coding Style
 - Files start with `/* ===== Header ===== */` describing file responsibility (in Chinese for domain code, English for infra)

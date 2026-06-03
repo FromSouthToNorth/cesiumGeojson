@@ -141,7 +141,7 @@
                 <div class="data-row">
                   <span class="data-label">经纬度</span>
                   <span class="data-value">{{ currentFrame.latitude.toFixed(6) }}, {{ currentFrame.longitude.toFixed(6)
-                  }}</span>
+                    }}</span>
                 </div>
                 <div class="data-row">
                   <span class="data-label">相对高度</span>
@@ -494,8 +494,8 @@ function formatDist(meters: number): string {
 .pb-time {
   flex-shrink: 0;
   color: var(--surface-text-muted);
-  font-size: 11px;
   font-family: monospace;
+  font-size: 11px;
 }
 
 .playback-controls {
@@ -540,8 +540,8 @@ function formatDist(meters: number): string {
 
 .data-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   padding: 3px 0;
 }
 
@@ -551,8 +551,8 @@ function formatDist(meters: number): string {
 }
 
 .data-value {
-  font-size: 12px;
   font-family: monospace;
+  font-size: 12px;
 }
 
 /* ── 姿态网格 ── */
@@ -576,9 +576,9 @@ function formatDist(meters: number): string {
 }
 
 .attitude-value {
+  font-family: monospace;
   font-size: 14px;
   font-weight: 600;
-  font-family: monospace;
 }
 
 /* ── 相机状态 ── */

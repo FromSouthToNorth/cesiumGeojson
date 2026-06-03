@@ -110,9 +110,7 @@ async function parseDJIFrames(json: any, v?: any): Promise<FlightTrack> {
     const absoluteAlt = relativeHeight + terrainHeight;
 
     const speed = Math.sqrt(
-      (velocity.velocityX || 0) ** 2 +
-        (velocity.velocityY || 0) ** 2 +
-        (velocity.velocityZ || 0) ** 2,
+      (velocity.velocityX || 0) ** 2 + (velocity.velocityY || 0) ** 2 + (velocity.velocityZ || 0) ** 2,
     );
 
     return {
@@ -162,9 +160,7 @@ async function parseDJIFrames(json: any, v?: any): Promise<FlightTrack> {
 
   const positions = markRaw(frames.map((f) => Cartesian3.fromDegrees(f.longitude, f.latitude, f.altitude)));
 
-  const appVersion = Array.isArray(summary.appVersion)
-    ? summary.appVersion.join('.')
-    : summary.appVersion || '';
+  const appVersion = Array.isArray(summary.appVersion) ? summary.appVersion.join('.') : summary.appVersion || '';
 
   return {
     id: genId(),
@@ -207,12 +203,9 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
   /* ── 同步 pb 状态到 playback shallowRef ──
    * 规则：
    * 1. isPlaying / isPaused 立即同步（按钮状态需要即时反馈）
-   * 2. currentTime / progress / currentFrameIndex 限制 500ms 同步一次
+   * 2. currentTime / progress / currentFrameIndex 与 usePlayback 的 syncUiState 相同节奏
    *    避免 FlightTrack.vue 的 currentFrame computed + 大量 DOM 每 200ms 重渲染
    */
-  let lastPlaybackSync = 0;
-  const PLAYBACK_SYNC_INTERVAL = 500;
-
   watch(pb.isPlaying, (v) => {
     playback.value = { ...playback.value, isPlaying: v };
   });
@@ -221,22 +214,17 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
   });
 
   watch(pb.currentTime, (v) => {
-    const now = performance.now();
     const track = activeTrack.value;
     let frameIdx = playback.value.currentFrameIndex;
     if (track) {
       frameIdx = findFrameInterval(track.frames, v).index;
     }
-
-    if (now - lastPlaybackSync >= PLAYBACK_SYNC_INTERVAL) {
-      lastPlaybackSync = now;
-      playback.value = {
-        ...playback.value,
-        currentTime: v,
-        progress: pb.progress.value,
-        currentFrameIndex: frameIdx,
-      };
-    }
+    playback.value = {
+      ...playback.value,
+      currentTime: v,
+      progress: pb.progress.value,
+      currentFrameIndex: frameIdx,
+    };
   });
 
   const activeTrack = computed(() => tracks.value.find((t) => t.id === activeTrackId.value) ?? null);
@@ -505,11 +493,7 @@ export const useFlightTrackStore = defineStore('flightTrack', () => {
     // 用所有轨迹点计算 3D 包围球，自动适配相机距离和角度
     const boundingSphere = BoundingSphere.fromPoints(track.positions);
     v.camera.flyToBoundingSphere(boundingSphere, {
-      offset: new HeadingPitchRange(
-        0,
-        CesiumMath.toRadians(-45),
-        boundingSphere.radius * 2.5,
-      ),
+      offset: new HeadingPitchRange(0, CesiumMath.toRadians(-45), boundingSphere.radius * 2.5),
     });
   }
 

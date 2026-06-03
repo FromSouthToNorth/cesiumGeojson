@@ -77,7 +77,10 @@ export function usePolygonEditing(options: {
     for (const p of pickedList) {
       if (!p?.id) continue;
       const idx = editPointEntities.indexOf(p.id);
-      if (idx !== -1) { removeVertexByIndex(idx); return; }
+      if (idx !== -1) {
+        removeVertexByIndex(idx);
+        return;
+      }
     }
   }
 

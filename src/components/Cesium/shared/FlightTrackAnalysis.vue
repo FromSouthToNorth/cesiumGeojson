@@ -11,11 +11,10 @@
       <div class="chart-label">高度-时间</div>
       <svg class="chart-svg" :viewBox="`${-padL} ${-padT} ${chartW + padL + padR} ${chartH + padT + padB}`">
         <!-- 网格线 -->
-        <line v-for="gl in heightGridLines" :key="gl.key"
-          :x1="padL" :y1="gl.y" :x2="chartW" :y2="gl.y"
+        <line v-for="gl in heightGridLines" :key="gl.key" :x1="padL" :y1="gl.y" :x2="chartW" :y2="gl.y"
           stroke="var(--surface-border)" stroke-width="0.5" stroke-dasharray="3,3" />
-        <text v-for="gl in heightGridLines" :key="'t' + gl.key"
-          :x="padL - 4" :y="gl.y + 3" fill="var(--surface-text-muted)" font-size="8" text-anchor="end">
+        <text v-for="gl in heightGridLines" :key="'t' + gl.key" :x="padL - 4" :y="gl.y + 3"
+          fill="var(--surface-text-muted)" font-size="8" text-anchor="end">
           {{ gl.label }}
         </text>
 
@@ -23,12 +22,13 @@
         <polygon :points="heightAreaPoints" fill="rgba(24,144,255,0.06)" />
 
         <!-- 高度曲线 -->
-        <polyline :points="heightLinePoints" fill="none" stroke="#1890FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <polyline :points="heightLinePoints" fill="none" stroke="#1890FF" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" />
 
         <!-- 悬停标记 -->
         <template v-if="hoverIndex !== null">
-          <line :x1="hoverX" :y1="0" :x2="hoverX" :y2="chartH"
-            stroke="#ff4d4f" stroke-width="1" stroke-dasharray="2,2" />
+          <line :x1="hoverX" :y1="0" :x2="hoverX" :y2="chartH" stroke="#ff4d4f" stroke-width="1"
+            stroke-dasharray="2,2" />
           <circle :cx="hoverX" :cy="hoverHeightY" r="4" fill="#ff4d4f" stroke="#fff" stroke-width="1.5" />
         </template>
 
@@ -39,7 +39,7 @@
 
       <div v-if="hoverIndex !== null" class="chart-tooltip">
         <span class="tip-time">{{ formatTime(hoverFrame.timestamp) }}</span>
-        <span class="tip-value" style="color:#1890FF">{{ hoverFrame.altitude.toFixed(1) }} m</span>
+        <span class="tip-value" style="color: #1890ff">{{ hoverFrame.altitude.toFixed(1) }} m</span>
       </div>
     </div>
 
@@ -48,11 +48,10 @@
       <div class="chart-label">速度-时间</div>
       <svg class="chart-svg" :viewBox="`${-padL} ${-padT} ${chartW + padL + padR} ${chartH + padT + padB}`">
         <!-- 网格线 -->
-        <line v-for="gl in speedGridLines" :key="gl.key"
-          :x1="padL" :y1="gl.y" :x2="chartW" :y2="gl.y"
+        <line v-for="gl in speedGridLines" :key="gl.key" :x1="padL" :y1="gl.y" :x2="chartW" :y2="gl.y"
           stroke="var(--surface-border)" stroke-width="0.5" stroke-dasharray="3,3" />
-        <text v-for="gl in speedGridLines" :key="'t' + gl.key"
-          :x="padL - 4" :y="gl.y + 3" fill="var(--surface-text-muted)" font-size="8" text-anchor="end">
+        <text v-for="gl in speedGridLines" :key="'t' + gl.key" :x="padL - 4" :y="gl.y + 3"
+          fill="var(--surface-text-muted)" font-size="8" text-anchor="end">
           {{ gl.label }}
         </text>
 
@@ -60,12 +59,13 @@
         <polygon :points="speedAreaPoints" fill="rgba(82,196,26,0.06)" />
 
         <!-- 速度曲线 -->
-        <polyline :points="speedLinePoints" fill="none" stroke="#52C41A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <polyline :points="speedLinePoints" fill="none" stroke="#52C41A" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" />
 
         <!-- 悬停标记 -->
         <template v-if="hoverSpeedIndex !== null">
-          <line :x1="hoverSpeedX" :y1="0" :x2="hoverSpeedX" :y2="chartH"
-            stroke="#ff4d4f" stroke-width="1" stroke-dasharray="2,2" />
+          <line :x1="hoverSpeedX" :y1="0" :x2="hoverSpeedX" :y2="chartH" stroke="#ff4d4f" stroke-width="1"
+            stroke-dasharray="2,2" />
           <circle :cx="hoverSpeedX" :cy="hoverSpeedY" r="4" fill="#ff4d4f" stroke="#fff" stroke-width="1.5" />
         </template>
 
@@ -76,7 +76,7 @@
 
       <div v-if="hoverSpeedIndex !== null" class="chart-tooltip">
         <span class="tip-time">{{ formatTime(hoverSpeedFrame.timestamp) }}</span>
-        <span class="tip-value" style="color:#52C41A">{{ hoverSpeedFrame.speed.toFixed(1) }} m/s</span>
+        <span class="tip-value" style="color: #52c41a">{{ hoverSpeedFrame.speed.toFixed(1) }} m/s</span>
       </div>
     </div>
 
@@ -228,8 +228,10 @@ const maxSpeed = computed(() => Math.max(...props.frames.map((f) => f.speed)));
 
 /* ── 悬停交互 ── */
 const hoverIndex = ref<number | null>(null);
-const hoverX = computed(() => hoverIndex.value !== null ? timeToX(props.frames[hoverIndex.value].timestamp) : 0);
-const hoverHeightY = computed(() => hoverIndex.value !== null ? heightToY(props.frames[hoverIndex.value].altitude) : 0);
+const hoverX = computed(() => (hoverIndex.value !== null ? timeToX(props.frames[hoverIndex.value].timestamp) : 0));
+const hoverHeightY = computed(() =>
+  hoverIndex.value !== null ? heightToY(props.frames[hoverIndex.value].altitude) : 0,
+);
 const hoverFrame = computed(() => props.frames[hoverIndex.value ?? 0]);
 
 function onHeightMouseMove(e: MouseEvent) {
@@ -237,7 +239,7 @@ function onHeightMouseMove(e: MouseEvent) {
   if (!wrap) return;
   const rect = wrap.getBoundingClientRect();
   const x = e.clientX - rect.left;
-  const ratio = Math.max(0, Math.min(1, (x / rect.width)));
+  const ratio = Math.max(0, Math.min(1, x / rect.width));
   const targetTime = ratio * props.totalTime;
 
   let nearest = 0;
@@ -253,8 +255,12 @@ function onHeightMouseMove(e: MouseEvent) {
 }
 
 const hoverSpeedIndex = ref<number | null>(null);
-const hoverSpeedX = computed(() => hoverSpeedIndex.value !== null ? timeToX(props.frames[hoverSpeedIndex.value].timestamp) : 0);
-const hoverSpeedY = computed(() => hoverSpeedIndex.value !== null ? speedToY(props.frames[hoverSpeedIndex.value].speed) : 0);
+const hoverSpeedX = computed(() =>
+  hoverSpeedIndex.value !== null ? timeToX(props.frames[hoverSpeedIndex.value].timestamp) : 0,
+);
+const hoverSpeedY = computed(() =>
+  hoverSpeedIndex.value !== null ? speedToY(props.frames[hoverSpeedIndex.value].speed) : 0,
+);
 const hoverSpeedFrame = computed(() => props.frames[hoverSpeedIndex.value ?? 0]);
 
 function onSpeedMouseMove(e: MouseEvent) {
@@ -262,7 +268,7 @@ function onSpeedMouseMove(e: MouseEvent) {
   if (!wrap) return;
   const rect = wrap.getBoundingClientRect();
   const x = e.clientX - rect.left;
-  const ratio = Math.max(0, Math.min(1, (x / rect.width)));
+  const ratio = Math.max(0, Math.min(1, x / rect.width));
   const targetTime = ratio * props.totalTime;
 
   let nearest = 0;
@@ -328,9 +334,9 @@ function formatTime(seconds: number): string {
   display: flex;
   gap: 8px;
   padding: 2px 8px;
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
   background: var(--surface-bg);
-  border: 1px solid var(--surface-border);
   font-size: 11px;
   pointer-events: none;
 }
@@ -366,8 +372,8 @@ function formatTime(seconds: number): string {
 }
 
 .analysis-stats .stat-value {
+  font-family: monospace;
   font-size: 12px;
   font-weight: 500;
-  font-family: monospace;
 }
 </style>
